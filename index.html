@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MULtty - Terminal Serial Compartilhado</title>
     
-    <!-- Biblioteca Paho MQTT para comunicação sem backend -->
+    <!-- Biblioteca Paho MQTT -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
 
     <style>
@@ -19,11 +19,7 @@
             --border-color: #444;
         }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -47,10 +43,7 @@
             flex-shrink: 0;
         }
 
-        .login-area {
-            display: flex;
-            gap: 10px;
-        }
+        .login-area { display: flex; gap: 10px; align-items: center; }
 
         input[type="text"] {
             padding: 5px 10px;
@@ -58,6 +51,7 @@
             border: 1px solid var(--border-color);
             background-color: #3c3c3c;
             color: white;
+            outline: none;
         }
 
         button {
@@ -70,15 +64,8 @@
             font-weight: bold;
             transition: background 0.2s;
         }
-
-        button:hover {
-            opacity: 0.9;
-        }
-
-        button:disabled {
-            background-color: #555;
-            cursor: not-allowed;
-        }
+        button:hover:not(:disabled) { opacity: 0.8; }
+        button:disabled { background-color: #555; cursor: not-allowed; }
 
         .app-title {
             font-size: 1.5rem;
@@ -91,10 +78,9 @@
         .main-container {
             display: flex;
             flex: 1;
-            overflow: hidden; /* Impede scroll na página inteira */
+            overflow: hidden;
         }
 
-        /* Coluna Esquerda (Chat e Usuários) - 1/3 */
         .left-column {
             width: 33.33%;
             display: flex;
@@ -103,7 +89,6 @@
             min-width: 300px;
         }
 
-        /* Coluna Direita (Terminal e Dados) - 2/3 */
         .right-column {
             width: 66.67%;
             display: flex;
@@ -111,16 +96,10 @@
             position: relative;
         }
 
-        /* Componentes Genéricos de Painel */
-        .panel {
-            display: flex;
-            flex-direction: column;
-            padding: 10px;
-            position: relative;
-        }
+        .panel { display: flex; flex-direction: column; padding: 10px; position: relative; }
 
         .panel-header {
-            font-size: 0.9rem;
+            font-size: 0.8rem;
             text-transform: uppercase;
             color: #888;
             margin-bottom: 5px;
@@ -130,13 +109,12 @@
 
         /* --- Chat --- */
         #chat-panel {
-            flex: 1; /* Ocupa o espaço disponível */
+            flex: 1;
             background-color: var(--chat-bg);
             overflow: hidden;
             display: flex;
             flex-direction: column;
         }
-
         #chat-messages {
             flex: 1;
             overflow-y: auto;
@@ -146,18 +124,10 @@
             flex-direction: column;
             gap: 5px;
         }
-
-        .msg {
-            word-wrap: break-word;
-        }
-        .msg .sender {
-            font-weight: bold;
-            color: var(--accent-color);
-        }
-        .msg.system {
-            color: #888;
-            font-style: italic;
-        }
+        .msg { word-wrap: break-word; }
+        .msg .sender { font-weight: bold; color: var(--accent-color); }
+        .msg.system { color: #ffd700; font-style: italic; font-size: 0.85rem; }
+        .msg.error { color: #ff4444; }
 
         #chat-input-area {
             display: flex;
@@ -165,10 +135,7 @@
             background: #252526;
             border-top: 1px solid var(--border-color);
         }
-
-        #chat-input-area input {
-            flex: 1;
-        }
+        #chat-input-area input { flex: 1; }
 
         /* --- Lista de Usuários --- */
         #users-panel {
@@ -178,26 +145,23 @@
             border-top: 1px solid var(--border-color);
             flex-shrink: 0;
         }
-
         .user-item {
             padding: 5px 10px;
             border-bottom: 1px solid #333;
             display: flex;
             justify-content: space-between;
+            align-items: center;
         }
-        .user-item.me {
-            color: var(--accent-color);
-        }
+        .user-item.me { color: var(--accent-color); font-weight: bold; }
         .user-item .serial-indicator {
             font-size: 0.7rem;
             background: #4caf50;
+            color: #000;
             padding: 2px 5px;
             border-radius: 3px;
             display: none;
         }
-        .user-item.has-serial .serial-indicator {
-            display: inline-block;
-        }
+        .user-item.has-serial .serial-indicator { display: inline-block; }
 
         /* --- Terminal --- */
         #terminal-panel {
@@ -210,7 +174,6 @@
             display: flex;
             flex-direction: column;
         }
-
         #terminal-output {
             flex: 1;
             overflow-y: auto;
@@ -219,39 +182,22 @@
             font-size: 1rem;
             line-height: 1.2;
         }
-
-        /* Campo invisível para capturar digitação no mobile/desktop sem keydown event complexo */
         #terminal-input-hidden {
             position: absolute;
             opacity: 0;
             top: -1000px;
         }
-
         .terminal-controls {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+            display: flex;
+            flex-wrap: wrap;
             gap: 5px;
             padding: 5px 0;
             border-top: 1px solid #333;
             margin-top: 5px;
         }
-        
-        .control-group {
-            display: flex;
-            gap: 2px;
-        }
-        
-        .control-input {
-            width: 30px !important;
-            padding: 0 !important;
-            text-align: center;
-        }
-
-        .btn-special {
-            font-size: 0.8rem;
-            background-color: #444;
-            padding: 4px;
-        }
+        .control-group { display: flex; gap: 2px; }
+        .control-input { width: 30px !important; padding: 0 !important; text-align: center; }
+        .btn-special { font-size: 0.8rem; background-color: #444; padding: 4px; }
 
         /* --- Serial Data --- */
         #serial-data-panel {
@@ -265,41 +211,21 @@
             color: #aaa;
             flex-shrink: 0;
         }
-        .log-tx { color: #ff6b6b; } /* Enviado >> */
-        .log-rx { color: #4ecdc4; } /* Recebido << */
+        .log-tx { color: #ff6b6b; }
+        .log-rx { color: #4ecdc4; }
 
         /* --- Responsividade --- */
         @media (max-width: 768px) {
-            .main-container {
-                flex-direction: column;
-                overflow-y: auto;
-            }
-            .left-column, .right-column {
-                width: 100%;
-                border-right: none;
-                height: 50vh; /* Divide a tela meio a meio no mobile */
-            }
-            .app-title {
-                font-size: 1.2rem;
-            }
-            header {
-                flex-direction: column;
-                height: auto;
-                gap: 10px;
-                padding-bottom: 15px;
-            }
-            .login-area {
-                width: 100%;
-            }
-            .login-area input {
-                flex: 1;
-            }
+            .main-container { flex-direction: column; overflow-y: auto; }
+            .left-column, .right-column { width: 100%; border-right: none; height: 50vh; }
+            header { flex-direction: column; height: auto; gap: 10px; padding-bottom: 15px; }
+            .login-area { width: 100%; }
+            .login-area input { flex: 1; }
         }
     </style>
 </head>
 <body>
 
-    <!-- Topo -->
     <header>
         <div class="login-area" id="login-area">
             <input type="text" id="username" placeholder="Seu Nome" maxlength="15">
@@ -308,14 +234,13 @@
         </div>
         <div class="app-title">MULtty</div>
         <div>
-            <button id="btn-connect-serial" onclick="connectSerial()" disabled>Conectar Serial</button>
+            <!-- Botão inicia habilitado -->
+            <button id="btn-connect-serial" onclick="connectSerial()">Conectar Serial</button>
         </div>
     </header>
 
-    <!-- Área Principal -->
     <div class="main-container" id="main-interface" style="display:none;">
         
-        <!-- Coluna Esquerda (Chat e Usuários) -->
         <div class="left-column">
             <div class="panel" id="chat-panel">
                 <div class="panel-header">Chat</div>
@@ -327,19 +252,15 @@
             </div>
             <div class="panel" id="users-panel">
                 <div class="panel-header">Usuários na Sala</div>
-                <div id="users-list">
-                    <!-- Lista preenchida via JS -->
-                </div>
+                <div id="users-list"></div>
             </div>
         </div>
 
-        <!-- Coluna Direita (Terminal e Dados) -->
         <div class="right-column">
             <div class="panel" id="terminal-panel" onclick="focusTerminalInput()">
                 <div class="panel-header">Terminal</div>
                 <div id="terminal-output">Aguardando conexão serial...</div>
                 
-                <!-- Controles Especiais -->
                 <div class="terminal-controls">
                     <button class="btn-special" onclick="sendSpecialChar('\t')">TAB</button>
                     <button class="btn-special" onclick="sendSpecialChar('\x1b[A')">↑</button>
@@ -348,17 +269,16 @@
                     <button class="btn-special" onclick="sendSpecialChar('\x1b[D')">←</button>
                     
                     <div class="control-group">
-                        <button class="btn-special" onclick="sendModifiedKey('c')">Ctrl</button>
-                        <input type="text" id="ctrl-char" class="control-input" maxlength="1" placeholder="+">
+                        <button class="btn-special" onclick="sendModifiedKey('c')">Ctrl+</button>
+                        <input type="text" id="ctrl-char" class="control-input" maxlength="1" placeholder="A">
                     </div>
                     <div class="control-group">
-                        <button class="btn-special" onclick="sendModifiedKey('a')">Alt</button>
-                        <input type="text" id="alt-char" class="control-input" maxlength="1" placeholder="+">
+                        <button class="btn-special" onclick="sendModifiedKey('a')">Alt+</button>
+                        <input type="text" id="alt-char" class="control-input" maxlength="1" placeholder="A">
                     </div>
                 </div>
             </div>
 
-            <!-- Campo invisível para capturar entrada de teclado -->
             <input type="text" id="terminal-input-hidden" autocomplete="off">
 
             <div class="panel" id="serial-data-panel">
@@ -370,21 +290,21 @@
 
     <script>
         // --- Configurações MQTT ---
-        // Usando broker público gratuito para demonstração "serverless"
         const MQTT_HOST = "broker.emqx.io";
-        const MQTT_PORT = 8083; // WebSocket Port
+        const MQTT_PORT = 8083; // Porta WSS
         let mqttClient = null;
         let isConnectedToMQTT = false;
 
         // --- Estado da Aplicação ---
         let currentUser = "";
         let currentRoom = "";
-        let myId = Math.random().toString(16).substr(2, 8);
+        let myId = "user_" + Math.random().toString(16).substr(2, 8);
+        
         let serialPort = null;
         let serialWriter = null;
         let serialReader = null;
         let isSerialConnected = false;
-        let serialLockedBy = null; // ID do usuário que detém a serial
+        let serialLockedBy = null;
 
         // --- Elementos do DOM ---
         const elUsername = document.getElementById('username');
@@ -399,7 +319,6 @@
         const elUsersList = document.getElementById('users-list');
         const elSerialLog = document.getElementById('serial-log');
 
-        // Mapa de usuários ativos (simplificado)
         let users = {};
 
         // --- Inicialização ---
@@ -415,43 +334,52 @@
             currentUser = name;
             currentRoom = room;
 
-            // Atualiza UI
             document.getElementById('login-area').style.display = 'none';
             elMainInterface.style.display = 'flex';
+            
+            // Habilita controles de chat
             elChatInput.disabled = false;
             elBtnSendChat.disabled = false;
 
+            addSystemMessage("Tentando conectar ao servidor de chat...", 'system');
             initMQTT();
         }
 
         // --- MQTT Lógica ---
         function initMQTT() {
-            // Cria cliente ID único
             const clientId = "multry_" + myId;
             mqttClient = new Paho.MQTT.Client(MQTT_HOST, MQTT_PORT, clientId);
 
             mqttClient.onConnectionLost = onConnectionLost;
             mqttClient.onMessageArrived = onMessageArrived;
 
-            mqttClient.connect({
+            const connectOptions = {
                 onSuccess: onConnect,
-                useSSL: true // WSS
-            });
+                onFailure: onFailure,
+                useSSL: true,
+                keepAliveInterval: 30
+            };
+
+            mqttClient.connect(connectOptions);
+        }
+
+        function onFailure(responseObject) {
+            addSystemMessage("Erro ao conectar: " + responseObject.errorMessage, 'error');
+            elBtnConnectSerial.disabled = false; // Libera para tentar conectar serial localmente se quiser (sem chat)
         }
 
         function onConnect() {
             isConnectedToMQTT = true;
-            console.log("MQTT Conectado");
+            addSystemMessage("Conectado ao Chat com sucesso!", 'system');
 
-            // Tópicos: Baseados na sala
             const topicBase = `multry/${currentRoom}`;
             
-            // Inscreve nos canais
+            // Se inscreve nos tópicos
             mqttClient.subscribe(`${topicBase}/chat`);
             mqttClient.subscribe(`${topicBase}/presence`);
-            mqttClient.subscribe(`${topicBase}/serial/data`); // Dados vindos da serial (RX)
-            mqttClient.subscribe(`${topicBase}/serial/input`); // Dados para enviar para serial (TX)
-            mqttClient.subscribe(`${topicBase}/serial/lock`); // Controle de quem é o dono da serial
+            mqttClient.subscribe(`${topicBase}/serial/data`);
+            mqttClient.subscribe(`${topicBase}/serial/input`);
+            mqttClient.subscribe(`${topicBase}/serial/lock`);
 
             // Anuncia presença
             publishMessage(`${topicBase}/presence`, JSON.stringify({
@@ -461,18 +389,28 @@
                 hasSerial: false
             }));
 
-            // Foca no terminal para captura de teclas
+            // Se ninguém travou a serial, habilita o botão
+            if (!serialLockedBy) {
+                elBtnConnectSerial.disabled = false;
+            }
+
             focusTerminalInput();
         }
 
         function onConnectionLost(responseObject) {
             isConnectedToMQTT = false;
             if (responseObject.errorCode !== 0) {
-                console.log("Conexão perdida:" + responseObject.errorMessage);
-                addSystemMessage("Desconectado do servidor. Tentando reconectar...", 'chat');
-                // Tenta reconectar após 5s
-                setTimeout(initMQTT, 5000);
+                addSystemMessage("Desconectado do servidor. " + responseObject.errorMessage, 'error');
+            } else {
+                addSystemMessage("Desconectado do servidor.", 'system');
             }
+            // Tenta reconectar após 5s
+            setTimeout(() => {
+                if (document.getElementById('main-interface').style.display !== 'none') {
+                    addSystemMessage("Tentando reconectar...", 'system');
+                    initMQTT();
+                }
+            }, 5000);
         }
 
         function publishMessage(topic, payload) {
@@ -488,35 +426,30 @@
             const topicBase = `multry/${currentRoom}`;
 
             try {
-                // Chat
                 if (topic === `${topicBase}/chat`) {
                     const data = JSON.parse(payload);
                     addChatMessage(data.sender, data.text);
                 }
-                // Presença
                 else if (topic === `${topicBase}/presence`) {
                     const data = JSON.parse(payload);
                     handlePresence(data);
                 }
-                // Serial Data (Recebido da porta serial -> Mostrar no terminal)
                 else if (topic === `${topicBase}/serial/data`) {
                     appendToTerminal(payload, false);
                     logSerialData(payload, 'rx');
                 }
-                // Serial Input (Digitado no terminal -> Enviar para a porta serial local)
                 else if (topic === `${topicBase}/serial/input`) {
                     if (isSerialConnected && serialWriter) {
                         serialWriter.write(payload);
                         logSerialData(payload, 'tx');
                     }
                 }
-                // Serial Lock (Mutex)
                 else if (topic === `${topicBase}/serial/lock`) {
                     const data = JSON.parse(payload);
                     updateSerialLock(data);
                 }
             } catch (e) {
-                console.error("Erro ao processar mensagem", e);
+                console.error("Erro MQTT:", e);
             }
         }
 
@@ -526,15 +459,11 @@
             if (!text) return;
 
             const topicBase = `multry/${currentRoom}`;
-            const payload = JSON.stringify({
-                sender: currentUser,
-                text: text
-            });
+            const payload = JSON.stringify({ sender: currentUser, text: text });
             publishMessage(`${topicBase}/chat`, payload);
             elChatInput.value = '';
         }
 
-        // Permitir enviar com Enter
         elChatInput.addEventListener('keypress', function (e) {
             if (e.key === 'Enter') sendChat();
         });
@@ -547,45 +476,47 @@
             elChatMessages.scrollTop = elChatMessages.scrollHeight;
         }
 
-        function addSystemMessage(text) {
+        function addSystemMessage(text, type = 'system') {
             const div = document.createElement('div');
-            div.className = 'msg system';
+            div.className = `msg ${type}`;
             div.textContent = text;
             elChatMessages.appendChild(div);
+            elChatMessages.scrollTop = elChatMessages.scrollHeight;
         }
 
         // --- Lógica de Presença ---
         function handlePresence(data) {
-            if (data.id === myId) return; // Ignora a si mesmo
+            if (data.id === myId) return;
 
             if (data.type === 'join') {
-                // Novo usuário
-                users[data.id] = { name: data.name, hasSerial: false };
-                renderUsers();
-                // Responder para ele saber que eu existo
-                const topicBase = `multry/${currentRoom}`;
-                publishMessage(`${topicBase}/presence`, JSON.stringify({
-                    type: 'announce',
-                    id: myId,
-                    name: currentUser,
-                    hasSerial: isSerialConnected
-                }));
-                addSystemMessage(`${data.name} entrou na sala.`);
+                if (!users[data.id]) {
+                    users[data.id] = { name: data.name, hasSerial: false };
+                    addSystemMessage(`${data.name} entrou na sala.`);
+                    // Anuncia que eu existo
+                    const topicBase = `multry/${currentRoom}`;
+                    publishMessage(`${topicBase}/presence`, JSON.stringify({
+                        type: 'announce',
+                        id: myId,
+                        name: currentUser,
+                        hasSerial: isSerialConnected
+                    }));
+                }
             } 
             else if (data.type === 'announce') {
                 users[data.id] = { name: data.name, hasSerial: data.hasSerial };
-                renderUsers();
             }
             else if (data.type === 'leave') {
-                delete users[data.id];
-                renderUsers();
+                if (users[data.id]) {
+                    addSystemMessage(`${users[data.id].name} saiu da sala.`);
+                    delete users[data.id];
+                }
             }
             else if (data.type === 'update_serial') {
                 if (users[data.id]) {
                     users[data.id].hasSerial = data.hasSerial;
-                    renderUsers();
                 }
             }
+            renderUsers();
         }
 
         function renderUsers() {
@@ -618,14 +549,13 @@
         // --- Web Serial API ---
         async function connectSerial() {
             if (!("serial" in navigator)) {
-                alert("Seu navegador não suporta a Web Serial API. Use Chrome, Edge ou Opera.");
+                alert("Web Serial API não suportada. Use Chrome/Edge/Opera.");
                 return;
             }
 
             try {
-                // Solicita porta
                 serialPort = await navigator.serial.requestPort();
-                await serialPort.open({ baudRate: 9600 }); // Padrão, poderia ser dinâmico
+                await serialPort.open({ baudRate: 9600 });
 
                 const textEncoder = new TextEncoderStream();
                 const writableStreamClosed = textEncoder.readable.pipeTo(serialPort.writable);
@@ -638,39 +568,29 @@
 
                 isSerialConnected = true;
                 
-                // UI Updates
                 elBtnConnectSerial.textContent = "Serial Conectada";
-                elBtnConnectSerial.disabled = true;
-                elTerminalOutput.textContent = ""; // Limpa buffer antigo
-                logSerialData("--- Conexão Serial Estabelecida ---", 'rx');
+                elBtnConnectSerial.disabled = true; // Desabilita para mim também (já conectado)
+                elTerminalOutput.textContent = "";
+                addSystemMessage("Conexão Serial local estabelecida.", 'system');
+                logSerialData("--- Serial Conectada ---", 'rx');
 
-                // Anuncia para a sala que pegou o lock
+                // Lock e Anuncio
                 const topicBase = `multry/${currentRoom}`;
-                const lockPayload = JSON.stringify({
-                    action: 'lock',
-                    id: myId,
-                    name: currentUser
-                });
-                publishMessage(`${topicBase}/serial/lock`, lockPayload);
+                if (isConnectedToMQTT) {
+                    const lockPayload = JSON.stringify({ action: 'lock', id: myId, name: currentUser });
+                    publishMessage(`${topicBase}/serial/lock`, lockPayload);
+                    
+                    publishMessage(`${topicBase}/presence`, JSON.stringify({
+                        type: 'update_serial', id: myId, hasSerial: true
+                    }));
+                }
 
-                // Anuncia presença atualizada
-                publishMessage(`${topicBase}/presence`, JSON.stringify({
-                    type: 'update_serial',
-                    id: myId,
-                    hasSerial: true
-                }));
-
-                // Loop de Leitura
                 readSerialLoop();
-
-                // Tratamento de desconexão da aba
-                window.addEventListener("beforeunload", () => {
-                     unlockSerial();
-                });
+                window.addEventListener("beforeunload", unlockSerial);
 
             } catch (err) {
-                console.error("Erro Serial:", err);
-                alert("Erro ao conectar serial: " + err.message);
+                console.error(err);
+                addSystemMessage("Erro ao conectar Serial: " + err.message, 'error');
             }
         }
 
@@ -679,196 +599,146 @@
                 while (serialPort.readable && isSerialConnected) {
                     const { value, done } = await serialReader.read();
                     if (done) break;
-                    if (value) {
-                        // Envia o dado recebido para o tópico de dados serial
+                    if (value && isConnectedToMQTT) {
                         const topicBase = `multry/${currentRoom}`;
                         publishMessage(`${topicBase}/serial/data`, value);
                     }
                 }
             } catch (error) {
-                console.error(error);
+                console.error("Erro loop leitura:", error);
             }
         }
 
         function unlockSerial() {
             if (!isSerialConnected) return;
-            
-            // Fecha portas
             if (serialWriter) serialWriter.close();
             if (serialReader) serialReader.cancel();
             if (serialPort) serialPort.close();
-            
             isSerialConnected = false;
             serialPort = null;
 
-            const topicBase = `multry/${currentRoom}`;
-            publishMessage(`${topicBase}/serial/lock`, JSON.stringify({ action: 'unlock' }));
-            publishMessage(`${topicBase}/presence`, JSON.stringify({
-                type: 'update_serial',
-                id: myId,
-                hasSerial: false
-            }));
-
             elBtnConnectSerial.textContent = "Conectar Serial";
-            elBtnConnectSerial.disabled = false;
+            elBtnConnectSerial.disabled = false; // Permite reconectar
+
+            if (isConnectedToMQTT) {
+                const topicBase = `multry/${currentRoom}`;
+                publishMessage(`${topicBase}/serial/lock`, JSON.stringify({ action: 'unlock' }));
+                publishMessage(`${topicBase}/presence`, JSON.stringify({
+                    type: 'update_serial', id: myId, hasSerial: false
+                }));
+            }
         }
 
         function updateSerialLock(data) {
             if (data.action === 'lock') {
                 serialLockedBy = data.id;
-                // Se não sou eu, desabilito botão
                 if (data.id !== myId) {
                     elBtnConnectSerial.disabled = true;
                     elBtnConnectSerial.textContent = `Serial em uso por ${data.name}`;
-                    addSystemMessage(`${data.name} conectou a serial.`);
                 }
             } else if (data.action === 'unlock') {
-                // Se quem liberou era quem travava
                 if (serialLockedBy === data.id) {
                     serialLockedBy = null;
-                    // Libera meu botão se eu não estou conectado
                     if (!isSerialConnected) {
                         elBtnConnectSerial.disabled = false;
                         elBtnConnectSerial.textContent = "Conectar Serial";
                     }
                 }
             }
-            // Atualiza lista visual de usuários para mostrar o indicador
             if (users[data.id]) {
                 users[data.id].hasSerial = (data.action === 'lock');
                 renderUsers();
             }
         }
 
-        // --- Lógica do Terminal (Input/Output) ---
-        
-        // Adiciona texto ao terminal visual
+        // --- Terminal ---
         function appendToTerminal(text, localEcho) {
-            // LocalEcho é opcional, se true é o que eu digitei
             elTerminalOutput.textContent += text;
             elTerminalOutput.scrollTop = elTerminalOutput.scrollHeight;
         }
 
-        // Focar no input invisível quando clicar no terminal
         function focusTerminalInput() {
             elTerminalInputHidden.focus();
         }
 
-        // Capturar teclado do campo invisível (funciona no mobile)
         elTerminalInputHidden.addEventListener('input', (e) => {
             const text = e.target.value;
             if (text) {
-                // Envia para a serial via MQTT
-                const topicBase = `multry/${currentRoom}`;
-                publishMessage(`${topicBase}/serial/input`, text);
-                
-                // Limpa input para manter tamanho pequeno e permitir novo envio
+                if (isConnectedToMQTT) {
+                    const topicBase = `multry/${currentRoom}`;
+                    publishMessage(`${topicBase}/serial/input`, text);
+                }
                 e.target.value = '';
             }
         });
 
-        // Tratar o Backspace no campo invisível
         elTerminalInputHidden.addEventListener('keydown', (e) => {
             if (e.key === 'Backspace') {
-                // O evento input vai disparar, mas o valor pode estar vazio ou removido.
-                // Em terminais reais, backspace envia o caractere 0x7F ou 0x08.
-                const topicBase = `multry/${currentRoom}`;
-                publishMessage(`${topicBase}/serial/input`, '\x08'); // Backspace
-                e.target.value = ''; // Força limpeza
+                if (isConnectedToMQTT) {
+                    const topicBase = `multry/${currentRoom}`;
+                    publishMessage(`${topicBase}/serial/input`, '\x08'); 
+                }
+                e.target.value = '';
             }
         });
 
-        // --- Botões Especiais ---
-        
         function sendSpecialChar(char) {
-            const topicBase = `multry/${currentRoom}`;
-            publishMessage(`${topicBase}/serial/input`, char);
+            if (isConnectedToMQTT) {
+                const topicBase = `multry/${currentRoom}`;
+                publishMessage(`${topicBase}/serial/input`, char);
+            }
             focusTerminalInput();
         }
 
         function sendModifiedKey(modifier) {
-            let inputId = '';
-            let char = '';
-
-            if (modifier === 'c') {
-                inputId = 'ctrl-char';
-            } else if (modifier === 'a') {
-                inputId = 'alt-char';
-            }
-
-            const inputEl = document.getElementById(inputId);
+            let inputId = (modifier === 'c') ? 'ctrl-char' : 'alt-char';
+            let inputEl = document.getElementById(inputId);
             if (inputEl) {
-                char = inputEl.value.toLowerCase();
+                let char = inputEl.value.toLowerCase();
                 if (char.length === 1) {
                     let code = char.charCodeAt(0);
                     let payload = '';
-
-                    if (modifier === 'c') {
-                        // Ctrl + Letra (subtrai 64 do ASCII, ex: Ctrl+C = 3)
-                        if (code >= 97 && code <= 122) { // a-z
-                            payload = String.fromCharCode(code - 96);
-                        }
+                    if (modifier === 'c' && code >= 97 && code <= 122) {
+                        payload = String.fromCharCode(code - 96);
                     } else if (modifier === 'a') {
-                        // Alt + Letra (Envia Escape + caractere)
                         payload = '\x1b' + char;
                     }
-
-                    if (payload) {
+                    if (payload && isConnectedToMQTT) {
                         const topicBase = `multry/${currentRoom}`;
                         publishMessage(`${topicBase}/serial/input`, payload);
-                        inputEl.value = ''; // Limpa campo
+                        inputEl.value = '';
                         focusTerminalInput();
                     }
                 }
             }
         }
 
-        // --- Logs de Debug/Serial Data ---
         function logSerialData(data, direction) {
             const div = document.createElement('div');
             const timestamp = new Date().toLocaleTimeString();
-            
-            // Escapa caracteres não imprimíveis para visualização
             let cleanData = data.replace(/[\x00-\x1F\x7F]/g, (m) => {
                 const special = {'\t':'TAB','\n':'LF','\r':'CR'};
                 return special[m] ? `{${special[m]}}` : `{\\x${m.charCodeAt(0).toString(16)}}`;
             });
-
-            if (direction === 'tx') {
-                div.className = 'log-tx';
-                div.textContent = `[${timestamp}] >> ${cleanData}`;
-            } else {
-                div.className = 'log-rx';
-                div.textContent = `[${timestamp}] << ${cleanData}`;
-            }
-            
+            div.className = (direction === 'tx') ? 'log-tx' : 'log-rx';
+            div.textContent = `[${timestamp}] ${direction === 'tx' ? '>>' : '<<'} ${cleanData}`;
             elSerialLog.appendChild(div);
             elSerialLog.scrollTop = elSerialLog.scrollHeight;
         }
 
         function escapeHtml(text) {
-            const map = {
-                '&': '&amp;',
-                '<': '&lt;',
-                '>': '&gt;',
-                '"': '&quot;',
-                "'": '&#039;'
-            };
-            return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+            return text.replace(/[&<>"']/g, function(m) { 
+                return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"\'":'&#039;'}[m]; 
+            });
         }
 
-        // Notifica saída ao fechar a janela
         window.addEventListener('beforeunload', () => {
             if (isConnectedToMQTT) {
                 const topicBase = `multry/${currentRoom}`;
-                publishMessage(`${topicBase}/presence`, JSON.stringify({
-                    type: 'leave',
-                    id: myId
-                }));
+                publishMessage(`${topicBase}/presence`, JSON.stringify({ type: 'leave', id: myId }));
                 unlockSerial();
             }
         });
-
     </script>
 </body>
 </html>
