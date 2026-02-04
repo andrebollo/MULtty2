@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MULtty - Terminal Serial Compartilhado</title>
     
-    <!-- Biblioteca Paho MQTT (CDN alternativo e confiável) -->
-    <script src="https://unpkg.com/paho-mqtt@1.0.1/mqttws31.min.js" type="text/javascript"></script>
+    <!-- Agora carrega o arquivo LOCAL que você baixou -->
+    <script src="mqttws31.min.js" type="text/javascript"></script>
 
     <style>
         :root {
@@ -31,7 +31,6 @@
             overflow: hidden;
         }
 
-        /* --- Header --- */
         header {
             display: flex;
             justify-content: space-between;
@@ -74,7 +73,6 @@
             letter-spacing: 2px;
         }
 
-        /* --- Layout Principal --- */
         .main-container {
             display: flex;
             flex: 1;
@@ -107,7 +105,6 @@
             padding-bottom: 2px;
         }
 
-        /* --- Chat --- */
         #chat-panel {
             flex: 1;
             background-color: var(--chat-bg);
@@ -137,7 +134,6 @@
         }
         #chat-input-area input { flex: 1; }
 
-        /* --- Lista de Usuários --- */
         #users-panel {
             height: 150px;
             background-color: #252526;
@@ -163,7 +159,6 @@
         }
         .user-item.has-serial .serial-indicator { display: inline-block; }
 
-        /* --- Terminal --- */
         #terminal-panel {
             flex: 1;
             background-color: var(--terminal-bg);
@@ -199,7 +194,6 @@
         .control-input { width: 30px !important; padding: 0 !important; text-align: center; }
         .btn-special { font-size: 0.8rem; background-color: #444; padding: 4px; }
 
-        /* --- Serial Data --- */
         #serial-data-panel {
             height: 120px;
             background-color: #1a1a1a;
@@ -214,7 +208,6 @@
         .log-tx { color: #ff6b6b; }
         .log-rx { color: #4ecdc4; }
 
-        /* --- Responsividade --- */
         @media (max-width: 768px) {
             .main-container { flex-direction: column; overflow-y: auto; }
             .left-column, .right-column { width: 100%; border-right: none; height: 50vh; }
@@ -290,20 +283,17 @@
     <script>
         // --- Verifica se a biblioteca carregou ---
         if (typeof Paho === 'undefined') {
-            alert("Erro Crítico: A biblioteca Paho MQTT não carregou. Verifique sua conexão com a internet ou use outro navegador.");
+            alert("Erro Crítico: Não foi possível encontrar o arquivo 'mqttws31.min.js'. Verifique se ele está na mesma pasta deste arquivo HTML.");
         }
 
-        // --- Configurações MQTT (EMQX - Configuração WSS Padrão) ---
         const MQTT_HOST = "broker.emqx.io";
-        const MQTT_PORT = 8084;      // Porta WSS (WebSocket Secure)
-        const MQTT_PATH = "/mqtt";   // Caminho obrigatório para EMQX
+        const MQTT_PORT = 8084;
+        const MQTT_PATH = "/mqtt";
         let mqttClient = null;
         let isConnectedToMQTT = false;
 
-        // --- Estado da Aplicação ---
         let currentUser = "";
         let currentRoom = "";
-        // Gera um ID único se não existir no localstorage (para evitar reconnect com ID antigo falhar)
         let myId = "user_" + Math.random().toString(16).substr(2, 8);
         
         let serialPort = null;
@@ -312,7 +302,6 @@
         let isSerialConnected = false;
         let serialLockedBy = null;
 
-        // --- Elementos do DOM ---
         const elUsername = document.getElementById('username');
         const elRoomname = document.getElementById('roomname');
         const elMainInterface = document.getElementById('main-interface');
@@ -327,7 +316,6 @@
 
         let users = {};
 
-        // --- Inicialização ---
         function enterRoom() {
             const name = elUsername.value.trim();
             const room = elRoomname.value.trim();
@@ -350,12 +338,8 @@
             initMQTT();
         }
 
-        // --- MQTT Lógica ---
         function initMQTT() {
-            // ID do cliente único a cada sessão
             const clientId = "multry_" + myId + "_" + Date.now();
-            
-            // Inicializa o cliente
             mqttClient = new Paho.MQTT.Client(MQTT_HOST, MQTT_PORT, MQTT_PATH, clientId);
 
             mqttClient.onConnectionLost = onConnectionLost;
@@ -364,10 +348,10 @@
             const connectOptions = {
                 onSuccess: onConnect,
                 onFailure: onFailure,
-                useSSL: true,       // Necessário para Render (HTTPS)
+                useSSL: true,
                 keepAliveInterval: 30,
                 timeout: 10,
-                mqttVersion: 4       // Força versão 3.1.1 que é mais compatível
+                mqttVersion: 4
             };
 
             mqttClient.connect(connectOptions);
@@ -376,16 +360,7 @@
         function onFailure(responseObject) {
             console.error("Connection failed: ", responseObject);
             let msg = responseObject.errorMessage || "Erro desconhecido";
-            
-            // Detalhamento do erro para debug
-            if (responseObject.errorCode === 7) { // Socket Error
-                 msg = "Erro de Socket (Porta fechada ou bloqueada pelo firewall).";
-            }
-
             addSystemMessage(`Falha na conexão: ${msg}`, 'error');
-            addSystemMessage("Verifique se o navegador bloqueou WebSockets ou tente recarregar.", 'error');
-            
-            // Libera botão serial para uso local mesmo sem chat
             elBtnConnectSerial.disabled = false; 
         }
 
@@ -395,7 +370,6 @@
 
             const topicBase = `multry/${currentRoom}`;
             
-            // Inscreve nos tópicos
             mqttClient.subscribe(`${topicBase}/chat`);
             mqttClient.subscribe(`${topicBase}/presence`);
             mqttClient.subscribe(`${topicBase}/serial/data`);
@@ -424,7 +398,6 @@
                 addSystemMessage("Desconectado do servidor.", 'system');
             }
             
-            // Tenta reconectar após 5s se a interface ainda estiver visível
             setTimeout(() => {
                 if (document.getElementById('main-interface').style.display !== 'none') {
                     addSystemMessage("Tentando reconectar...", 'system');
@@ -477,7 +450,6 @@
             }
         }
 
-        // --- Lógica de Chat ---
         function sendChat() {
             const text = elChatInput.value.trim();
             if (!text) return;
@@ -508,7 +480,6 @@
             elChatMessages.scrollTop = elChatMessages.scrollHeight;
         }
 
-        // --- Lógica de Presença ---
         function handlePresence(data) {
             if (data.id === myId) return;
 
@@ -545,7 +516,6 @@
         function renderUsers() {
             elUsersList.innerHTML = '';
             
-            // Me
             const meDiv = document.createElement('div');
             meDiv.className = 'user-item me';
             meDiv.innerHTML = `
@@ -555,7 +525,6 @@
             if (isSerialConnected) meDiv.classList.add('has-serial');
             elUsersList.appendChild(meDiv);
 
-            // Outros
             for (let id in users) {
                 const u = users[id];
                 const div = document.createElement('div');
@@ -569,7 +538,6 @@
             }
         }
 
-        // --- Web Serial API ---
         async function connectSerial() {
             if (!("serial" in navigator)) {
                 alert("Web Serial API não suportada. Use Chrome/Edge/Opera.");
@@ -667,7 +635,6 @@
             }
         }
 
-        // --- Terminal ---
         function appendToTerminal(text, localEcho) {
             elTerminalOutput.textContent += text;
             elTerminalOutput.scrollTop = elTerminalOutput.scrollHeight;
