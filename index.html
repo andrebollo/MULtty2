@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MULtty - Terminal Serial Compartilhado</title>
     
-    <!-- Biblioteca Paho MQTT -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
+    <!-- Biblioteca Paho MQTT (CDN alternativo e confiável) -->
+    <script src="https://unpkg.com/paho-mqtt@1.0.1/mqttws31.min.js" type="text/javascript"></script>
 
     <style>
         :root {
@@ -288,16 +288,22 @@
     </div>
 
     <script>
-        // --- Configurações MQTT (HiveMQ Cloud - Mais estável para WSS) ---
-        const MQTT_HOST = "broker.hivemq.com";
-        const MQTT_PORT = 8884; // Porta WebSocket Seguro (WSS)
-        const MQTT_PATH = "/mqtt"; // Caminho obrigatório para HiveMQ Cloud
+        // --- Verifica se a biblioteca carregou ---
+        if (typeof Paho === 'undefined') {
+            alert("Erro Crítico: A biblioteca Paho MQTT não carregou. Verifique sua conexão com a internet ou use outro navegador.");
+        }
+
+        // --- Configurações MQTT (EMQX - Configuração WSS Padrão) ---
+        const MQTT_HOST = "broker.emqx.io";
+        const MQTT_PORT = 8084;      // Porta WSS (WebSocket Secure)
+        const MQTT_PATH = "/mqtt";   // Caminho obrigatório para EMQX
         let mqttClient = null;
         let isConnectedToMQTT = false;
 
         // --- Estado da Aplicação ---
         let currentUser = "";
         let currentRoom = "";
+        // Gera um ID único se não existir no localstorage (para evitar reconnect com ID antigo falhar)
         let myId = "user_" + Math.random().toString(16).substr(2, 8);
         
         let serialPort = null;
@@ -340,13 +346,16 @@
             elChatInput.disabled = false;
             elBtnSendChat.disabled = false;
 
-            addSystemMessage("Conectando ao servidor...", 'system');
+            addSystemMessage("Iniciando conexão segura (WSS) com broker.emqx.io...", 'system');
             initMQTT();
         }
 
         // --- MQTT Lógica ---
         function initMQTT() {
-            const clientId = "multry_" + myId;
+            // ID do cliente único a cada sessão
+            const clientId = "multry_" + myId + "_" + Date.now();
+            
+            // Inicializa o cliente
             mqttClient = new Paho.MQTT.Client(MQTT_HOST, MQTT_PORT, MQTT_PATH, clientId);
 
             mqttClient.onConnectionLost = onConnectionLost;
@@ -355,22 +364,26 @@
             const connectOptions = {
                 onSuccess: onConnect,
                 onFailure: onFailure,
-                useSSL: true, // Importante para Render (HTTPS)
+                useSSL: true,       // Necessário para Render (HTTPS)
                 keepAliveInterval: 30,
-                timeout: 10
+                timeout: 10,
+                mqttVersion: 4       // Força versão 3.1.1 que é mais compatível
             };
 
             mqttClient.connect(connectOptions);
         }
 
         function onFailure(responseObject) {
-            console.error("Connection failed: " + responseObject.errorMessage);
-            let errorMsg = "Erro ao conectar: " + responseObject.errorMessage;
-            // Se a mensagem for genérica, dá uma dica
-            if (responseObject.errorMessage === "AMQJS0007E Socket error:undefined" || !responseObject.errorMessage) {
-                errorMsg = "Erro de conexão WebSocket. O navegador pode estar bloqueando conexões WSS.";
+            console.error("Connection failed: ", responseObject);
+            let msg = responseObject.errorMessage || "Erro desconhecido";
+            
+            // Detalhamento do erro para debug
+            if (responseObject.errorCode === 7) { // Socket Error
+                 msg = "Erro de Socket (Porta fechada ou bloqueada pelo firewall).";
             }
-            addSystemMessage(errorMsg, 'error');
+
+            addSystemMessage(`Falha na conexão: ${msg}`, 'error');
+            addSystemMessage("Verifique se o navegador bloqueou WebSockets ou tente recarregar.", 'error');
             
             // Libera botão serial para uso local mesmo sem chat
             elBtnConnectSerial.disabled = false; 
@@ -382,6 +395,7 @@
 
             const topicBase = `multry/${currentRoom}`;
             
+            // Inscreve nos tópicos
             mqttClient.subscribe(`${topicBase}/chat`);
             mqttClient.subscribe(`${topicBase}/presence`);
             mqttClient.subscribe(`${topicBase}/serial/data`);
@@ -405,7 +419,7 @@
         function onConnectionLost(responseObject) {
             isConnectedToMQTT = false;
             if (responseObject.errorCode !== 0) {
-                addSystemMessage("Desconectado: " + responseObject.errorMessage, 'error');
+                addSystemMessage("Desconectado: " + (responseObject.errorMessage || "Erro genérico"), 'error');
             } else {
                 addSystemMessage("Desconectado do servidor.", 'system');
             }
