@@ -234,7 +234,6 @@
         </div>
         <div class="app-title">MULtty</div>
         <div>
-            <!-- Botão inicia habilitado -->
             <button id="btn-connect-serial" onclick="connectSerial()">Conectar Serial</button>
         </div>
     </header>
@@ -289,9 +288,10 @@
     </div>
 
     <script>
-        // --- Configurações MQTT ---
-        const MQTT_HOST = "broker.emqx.io";
-        const MQTT_PORT = 8083; // Porta WSS
+        // --- Configurações MQTT (HiveMQ Cloud - Mais estável para WSS) ---
+        const MQTT_HOST = "broker.hivemq.com";
+        const MQTT_PORT = 8884; // Porta WebSocket Seguro (WSS)
+        const MQTT_PATH = "/mqtt"; // Caminho obrigatório para HiveMQ Cloud
         let mqttClient = null;
         let isConnectedToMQTT = false;
 
@@ -337,18 +337,17 @@
             document.getElementById('login-area').style.display = 'none';
             elMainInterface.style.display = 'flex';
             
-            // Habilita controles de chat
             elChatInput.disabled = false;
             elBtnSendChat.disabled = false;
 
-            addSystemMessage("Tentando conectar ao servidor de chat...", 'system');
+            addSystemMessage("Conectando ao servidor...", 'system');
             initMQTT();
         }
 
         // --- MQTT Lógica ---
         function initMQTT() {
             const clientId = "multry_" + myId;
-            mqttClient = new Paho.MQTT.Client(MQTT_HOST, MQTT_PORT, clientId);
+            mqttClient = new Paho.MQTT.Client(MQTT_HOST, MQTT_PORT, MQTT_PATH, clientId);
 
             mqttClient.onConnectionLost = onConnectionLost;
             mqttClient.onMessageArrived = onMessageArrived;
@@ -356,32 +355,39 @@
             const connectOptions = {
                 onSuccess: onConnect,
                 onFailure: onFailure,
-                useSSL: true,
-                keepAliveInterval: 30
+                useSSL: true, // Importante para Render (HTTPS)
+                keepAliveInterval: 30,
+                timeout: 10
             };
 
             mqttClient.connect(connectOptions);
         }
 
         function onFailure(responseObject) {
-            addSystemMessage("Erro ao conectar: " + responseObject.errorMessage, 'error');
-            elBtnConnectSerial.disabled = false; // Libera para tentar conectar serial localmente se quiser (sem chat)
+            console.error("Connection failed: " + responseObject.errorMessage);
+            let errorMsg = "Erro ao conectar: " + responseObject.errorMessage;
+            // Se a mensagem for genérica, dá uma dica
+            if (responseObject.errorMessage === "AMQJS0007E Socket error:undefined" || !responseObject.errorMessage) {
+                errorMsg = "Erro de conexão WebSocket. O navegador pode estar bloqueando conexões WSS.";
+            }
+            addSystemMessage(errorMsg, 'error');
+            
+            // Libera botão serial para uso local mesmo sem chat
+            elBtnConnectSerial.disabled = false; 
         }
 
         function onConnect() {
             isConnectedToMQTT = true;
-            addSystemMessage("Conectado ao Chat com sucesso!", 'system');
+            addSystemMessage("Conectado ao chat com sucesso!", 'system');
 
             const topicBase = `multry/${currentRoom}`;
             
-            // Se inscreve nos tópicos
             mqttClient.subscribe(`${topicBase}/chat`);
             mqttClient.subscribe(`${topicBase}/presence`);
             mqttClient.subscribe(`${topicBase}/serial/data`);
             mqttClient.subscribe(`${topicBase}/serial/input`);
             mqttClient.subscribe(`${topicBase}/serial/lock`);
 
-            // Anuncia presença
             publishMessage(`${topicBase}/presence`, JSON.stringify({
                 type: 'join',
                 id: myId,
@@ -389,7 +395,6 @@
                 hasSerial: false
             }));
 
-            // Se ninguém travou a serial, habilita o botão
             if (!serialLockedBy) {
                 elBtnConnectSerial.disabled = false;
             }
@@ -400,11 +405,12 @@
         function onConnectionLost(responseObject) {
             isConnectedToMQTT = false;
             if (responseObject.errorCode !== 0) {
-                addSystemMessage("Desconectado do servidor. " + responseObject.errorMessage, 'error');
+                addSystemMessage("Desconectado: " + responseObject.errorMessage, 'error');
             } else {
                 addSystemMessage("Desconectado do servidor.", 'system');
             }
-            // Tenta reconectar após 5s
+            
+            // Tenta reconectar após 5s se a interface ainda estiver visível
             setTimeout(() => {
                 if (document.getElementById('main-interface').style.display !== 'none') {
                     addSystemMessage("Tentando reconectar...", 'system');
@@ -415,9 +421,13 @@
 
         function publishMessage(topic, payload) {
             if (!isConnectedToMQTT) return;
-            const message = new Paho.MQTT.Message(payload);
-            message.destinationName = topic;
-            mqttClient.send(message);
+            try {
+                const message = new Paho.MQTT.Message(payload);
+                message.destinationName = topic;
+                mqttClient.send(message);
+            } catch (e) {
+                console.error("Erro ao enviar msg", e);
+            }
         }
 
         function onMessageArrived(message) {
@@ -449,7 +459,7 @@
                     updateSerialLock(data);
                 }
             } catch (e) {
-                console.error("Erro MQTT:", e);
+                console.error("Erro parse JSON", e);
             }
         }
 
@@ -492,7 +502,6 @@
                 if (!users[data.id]) {
                     users[data.id] = { name: data.name, hasSerial: false };
                     addSystemMessage(`${data.name} entrou na sala.`);
-                    // Anuncia que eu existo
                     const topicBase = `multry/${currentRoom}`;
                     publishMessage(`${topicBase}/presence`, JSON.stringify({
                         type: 'announce',
@@ -569,20 +578,15 @@
                 isSerialConnected = true;
                 
                 elBtnConnectSerial.textContent = "Serial Conectada";
-                elBtnConnectSerial.disabled = true; // Desabilita para mim também (já conectado)
+                elBtnConnectSerial.disabled = true;
                 elTerminalOutput.textContent = "";
                 addSystemMessage("Conexão Serial local estabelecida.", 'system');
                 logSerialData("--- Serial Conectada ---", 'rx');
 
-                // Lock e Anuncio
                 const topicBase = `multry/${currentRoom}`;
                 if (isConnectedToMQTT) {
-                    const lockPayload = JSON.stringify({ action: 'lock', id: myId, name: currentUser });
-                    publishMessage(`${topicBase}/serial/lock`, lockPayload);
-                    
-                    publishMessage(`${topicBase}/presence`, JSON.stringify({
-                        type: 'update_serial', id: myId, hasSerial: true
-                    }));
+                    publishMessage(`${topicBase}/serial/lock`, JSON.stringify({ action: 'lock', id: myId, name: currentUser }));
+                    publishMessage(`${topicBase}/presence`, JSON.stringify({ type: 'update_serial', id: myId, hasSerial: true }));
                 }
 
                 readSerialLoop();
@@ -590,7 +594,7 @@
 
             } catch (err) {
                 console.error(err);
-                addSystemMessage("Erro ao conectar Serial: " + err.message, 'error');
+                addSystemMessage("Erro Serial: " + err.message, 'error');
             }
         }
 
@@ -618,14 +622,12 @@
             serialPort = null;
 
             elBtnConnectSerial.textContent = "Conectar Serial";
-            elBtnConnectSerial.disabled = false; // Permite reconectar
+            elBtnConnectSerial.disabled = false;
 
             if (isConnectedToMQTT) {
                 const topicBase = `multry/${currentRoom}`;
                 publishMessage(`${topicBase}/serial/lock`, JSON.stringify({ action: 'unlock' }));
-                publishMessage(`${topicBase}/presence`, JSON.stringify({
-                    type: 'update_serial', id: myId, hasSerial: false
-                }));
+                publishMessage(`${topicBase}/presence`, JSON.stringify({ type: 'update_serial', id: myId, hasSerial: false }));
             }
         }
 
