@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MULtty - Terminal Serial Compartilhado</title>
     
-    <!-- Agora carrega o arquivo LOCAL que você baixou -->
+    <!-- Carrega o arquivo LOCAL baixado anteriormente -->
     <script src="mqttws31.min.js" type="text/javascript"></script>
 
     <style>
@@ -281,9 +281,8 @@
     </div>
 
     <script>
-        // --- Verifica se a biblioteca carregou ---
         if (typeof Paho === 'undefined') {
-            alert("Erro Crítico: Não foi possível encontrar o arquivo 'mqttws31.min.js'. Verifique se ele está na mesma pasta deste arquivo HTML.");
+            alert("Erro Crítico: Não foi possível encontrar o arquivo 'mqttws31.min.js'.");
         }
 
         const MQTT_HOST = "broker.emqx.io";
@@ -359,8 +358,7 @@
 
         function onFailure(responseObject) {
             console.error("Connection failed: ", responseObject);
-            let msg = responseObject.errorMessage || "Erro desconhecido";
-            addSystemMessage(`Falha na conexão: ${msg}`, 'error');
+            addSystemMessage(`Falha na conexão: ${responseObject.errorMessage || "Erro desconhecido"}`, 'error');
             elBtnConnectSerial.disabled = false; 
         }
 
@@ -549,11 +547,13 @@
                 await serialPort.open({ baudRate: 9600 });
 
                 const textEncoder = new TextEncoderStream();
-                const writableStreamClosed = textEncoder.readable.pipeTo(serialPort.writable);
+                // Tratamento de erro no pipe de escrita
+                textEncoder.readable.pipeTo(serialPort.writable).catch(err => console.error("Erro pipe Writable", err));
                 serialWriter = textEncoder.writable.getWriter();
 
                 const textDecoder = new TextDecoderStream();
-                const readableStreamClosed = serialPort.readable.pipeTo(textDecoder.writable);
+                // Tratamento de erro no pipe de leitura
+                serialPort.readable.pipeTo(textDecoder.writable).catch(err => console.error("Erro pipe Readable", err));
                 const reader = textDecoder.readable.getReader();
                 serialReader = reader;
 
@@ -584,14 +584,26 @@
             try {
                 while (serialPort.readable && isSerialConnected) {
                     const { value, done } = await serialReader.read();
-                    if (done) break;
-                    if (value && isConnectedToMQTT) {
-                        const topicBase = `multry/${currentRoom}`;
-                        publishMessage(`${topicBase}/serial/data`, value);
+                    
+                    if (done) {
+                        console.log("Stream leitura finalizado.");
+                        break; 
+                    }
+                    
+                    if (value) {
+                        // Envia para MQTT para todos verem
+                        if (isConnectedToMQTT) {
+                            const topicBase = `multry/${currentRoom}`;
+                            publishMessage(`${topicBase}/serial/data`, value);
+                        } else {
+                            // Fallback: Se MQTT cair, mostra localmente apenas (opcional, mas ajuda debug)
+                            console.log("Dados recebidos sem MQTT:", value);
+                        }
                     }
                 }
             } catch (error) {
                 console.error("Erro loop leitura:", error);
+                addSystemMessage("Erro na leitura da serial. Verifique o dispositivo.", 'error');
             }
         }
 
@@ -644,6 +656,7 @@
             elTerminalInputHidden.focus();
         }
 
+        // --- CORREÇÃO DO INPUT DO TERMINAL ---
         elTerminalInputHidden.addEventListener('input', (e) => {
             const text = e.target.value;
             if (text) {
@@ -651,17 +664,25 @@
                     const topicBase = `multry/${currentRoom}`;
                     publishMessage(`${topicBase}/serial/input`, text);
                 }
-                e.target.value = '';
+                e.target.value = ''; // Limpa para digitar o próximo
             }
         });
 
+        // CORREÇÃO ENTER KEY e BACKSPACE
         elTerminalInputHidden.addEventListener('keydown', (e) => {
             if (e.key === 'Backspace') {
                 if (isConnectedToMQTT) {
                     const topicBase = `multry/${currentRoom}`;
-                    publishMessage(`${topicBase}/serial/input`, '\x08'); 
+                    publishMessage(`${topicBase}/serial/input`, '\x08'); // Backspace code
                 }
                 e.target.value = '';
+            } else if (e.key === 'Enter') {
+                // Envia Enter (Carriage Return)
+                if (isConnectedToMQTT) {
+                    const topicBase = `multry/${currentRoom}`;
+                    publishMessage(`${topicBase}/serial/input`, '\r');
+                }
+                e.target.value = ''; // Limpa campo
             }
         });
 
