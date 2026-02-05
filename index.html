@@ -410,6 +410,13 @@
             try {
                 const message = new Paho.MQTT.Message(payload);
                 message.destinationName = topic;
+                
+                // --- CORREÇÃO CRÍTICA: QoS 1 ---
+                // Isso força o broker a confirmar o recebimento, prevenindo que pacotes 
+                // sejam descartados silenciosamente (como estava acontecendo com o final da mensagem).
+                // Isso também controla naturalmente a velocidade de envio, evitando "flooding".
+                message.qos = 1; 
+                
                 mqttClient.send(message);
             } catch (e) {
                 console.error("Erro ao enviar msg", e);
@@ -417,8 +424,6 @@
         }
 
         // Fragmenta dados grandes para envio via MQTT
-        // CORREÇÃO CRÍTICA: CHUNK_SIZE reduzido para 1024 bytes (1KB)
-        // 16KB excede o limite de pacotes de muitos brokers públicos, cortando o fim da mensagem.
         function sendSerialDataChunked(topic, data) {
             const CHUNK_SIZE = 1024; 
             
@@ -449,11 +454,9 @@
                     handlePresence(data);
                 }
                 else if (topic === `${topicBase}/serial/data`) {
-                    // Usuario conectado ignora (já viu localmente)
                     if (isSerialConnected) {
                         logSerialData(payload, 'rx');
                     } else {
-                        // Usuário remoto mostra no terminal
                         appendToTerminal(payload);
                         logSerialData(payload, 'rx');
                     }
@@ -614,10 +617,7 @@
                     }
                     
                     if (value) {
-                        // 1. Mostra local
                         appendToTerminal(value);
-
-                        // 2. Envia para outros (Fragmentado em 1KB)
                         const topicBase = `multry/${currentRoom}`;
                         sendSerialDataChunked(`${topicBase}/serial/data`, value);
                     }
@@ -681,35 +681,32 @@
             elTerminalInputHidden.focus();
         }
 
-        // --- CORREÇÃO DO BACKSPACE E INPUT ---
+        // --- FILTRO DE INPUT RIGOROSO ---
         elTerminalInputHidden.addEventListener('input', (e) => {
-            // Ignora eventos de deleção de conteúdo que o navegador possa disparar após o keydown
-            if (e.inputType === "deleteContentBackward" || e.inputType === "deleteContentForward") {
-                e.target.value = ''; 
-                return;
-            }
-
-            const text = e.inputType === "insertText" ? e.data : e.target.value;
-
-            // Filtra caracteres de controle não imprimíveis (como \b)
-            // Espaço é 32. Qualquer código < 32 deve ser ignorado aqui.
-            if (text && text.length === 1 && text.charCodeAt(0) < 32) {
+            // Apenas envia se o tipo do evento for exatamente "insertText"
+            // Isso ignora totalmente eventos de deletar, colar ou comandos de teclado estranhos.
+            if (e.inputType !== "insertText") {
                 e.target.value = '';
                 return;
             }
 
-            if (text) {
-                if (isConnectedToMQTT) {
-                    const topicBase = `multry/${currentRoom}`;
-                    publishMessage(`${topicBase}/serial/input`, text);
+            const text = e.data || e.target.value;
+            
+            if (text && text.length === 1) {
+                const code = text.charCodeAt(0);
+                // Ignora qualquer caractere não imprimível (< 32)
+                if (code >= 32) {
+                    if (isConnectedToMQTT) {
+                        const topicBase = `multry/${currentRoom}`;
+                        publishMessage(`${topicBase}/serial/input`, text);
+                    }
                 }
-                e.target.value = '';
             }
+            e.target.value = '';
         });
 
         elTerminalInputHidden.addEventListener('keydown', (e) => {
             if (e.key === 'Backspace') {
-                // Impede que o navegador processe o backspace no campo invisível (que gera o evento input problemático)
                 e.preventDefault(); 
                 if (isConnectedToMQTT) {
                     const topicBase = `multry/${currentRoom}`;
