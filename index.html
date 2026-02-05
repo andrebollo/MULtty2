@@ -417,12 +417,12 @@
         }
 
         // Fragmenta dados grandes para envio via MQTT (para outros usuários)
+        // CORREÇÃO: Aumentado para 16KB para evitar perda de pacotes no broker (flooding)
         function sendSerialDataChunked(topic, data) {
-            const CHUNK_SIZE = 2048; 
+            const CHUNK_SIZE = 16384; 
             
             if (data.length <= CHUNK_SIZE) {
                 publishMessage(topic, data);
-                // Log apenas de TX para evitar poluição excessiva de RX
                 logSerialData(data, 'tx');
             } else {
                 for (let i = 0; i < data.length; i += CHUNK_SIZE) {
@@ -448,14 +448,10 @@
                     handlePresence(data);
                 }
                 else if (topic === `${topicBase}/serial/data`) {
-                    // --- CORREÇÃO DA DUPLICAÇÃO ---
-                    // Se eu sou o usuário conectado à serial, já li o dado direto da USB e mostrei.
-                    // Se eu processar o MQTT aqui, vai duplicar.
+                    // Usuario conectado ignora (já viu localmente)
                     if (isSerialConnected) {
-                        // Apenas loga para debug, não imprime no terminal
                         logSerialData(payload, 'rx');
                     } else {
-                        // Se eu sou remoto, mostro no terminal
                         appendToTerminal(payload);
                         logSerialData(payload, 'rx');
                     }
@@ -616,10 +612,7 @@
                     }
                     
                     if (value) {
-                        // 1. MOSTRA IMEDIATO PARA MIM (Usuario Conectado)
                         appendToTerminal(value);
-
-                        // 2. ENVIA PARA OUTROS (Fragmentado via MQTT)
                         const topicBase = `multry/${currentRoom}`;
                         sendSerialDataChunked(`${topicBase}/serial/data`, value);
                     }
@@ -670,12 +663,10 @@
             }
         }
 
-        // --- TERMINAL: Adiciona texto com Scroll Garantido ---
         function appendToTerminal(text) {
             const span = document.createElement('span');
             span.textContent = text;
             elTerminalOutput.appendChild(span);
-            
             requestAnimationFrame(() => {
                 elTerminalOutput.scrollTop = elTerminalOutput.scrollHeight;
             });
@@ -687,10 +678,20 @@
 
         elTerminalInputHidden.addEventListener('input', (e) => {
             const text = e.target.value;
+            
             if (text) {
-                if (isConnectedToMQTT) {
-                    const topicBase = `multry/${currentRoom}`;
-                    publishMessage(`${topicBase}/serial/input`, text);
+                // CORREÇÃO DO BACKSPACE (Input Glitch)
+                // Filtra caracteres de controle (< 32) vindos de input,
+                // pois eles são tratados no keydown.
+                // Isso evita enviar o "\x08" estranho do teclado móvel.
+                // Espaço é 32, letras acima.
+                const code = text.charCodeAt(0);
+                
+                if (code >= 32) {
+                    if (isConnectedToMQTT) {
+                        const topicBase = `multry/${currentRoom}`;
+                        publishMessage(`${topicBase}/serial/input`, text);
+                    }
                 }
                 e.target.value = '';
             }
@@ -700,8 +701,7 @@
             if (e.key === 'Backspace') {
                 if (isConnectedToMQTT) {
                     const topicBase = `multry/${currentRoom}`;
-                    // --- CORREÇÃO BACKSPACE ---
-                    // Mudei de \x08 (Backspace) para \x7F (Delete), que é padrão em terminais modernos
+                    // Mantiem \x7F (Delete) que funcionou bem para o usuário local
                     publishMessage(`${topicBase}/serial/input`, '\x7F'); 
                 }
                 e.target.value = '';
@@ -745,7 +745,6 @@
             }
         }
 
-        // --- LOGS SERIAL DATA (SCROLL GARANTIDO) ---
         function logSerialData(data, direction) {
             const div = document.createElement('div');
             const timestamp = new Date().toLocaleTimeString();
