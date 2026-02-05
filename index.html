@@ -416,10 +416,11 @@
             }
         }
 
-        // Fragmenta dados grandes para envio via MQTT (para outros usuários)
-        // CORREÇÃO: Aumentado para 16KB para evitar perda de pacotes no broker (flooding)
+        // Fragmenta dados grandes para envio via MQTT
+        // CORREÇÃO CRÍTICA: CHUNK_SIZE reduzido para 1024 bytes (1KB)
+        // 16KB excede o limite de pacotes de muitos brokers públicos, cortando o fim da mensagem.
         function sendSerialDataChunked(topic, data) {
-            const CHUNK_SIZE = 16384; 
+            const CHUNK_SIZE = 1024; 
             
             if (data.length <= CHUNK_SIZE) {
                 publishMessage(topic, data);
@@ -452,6 +453,7 @@
                     if (isSerialConnected) {
                         logSerialData(payload, 'rx');
                     } else {
+                        // Usuário remoto mostra no terminal
                         appendToTerminal(payload);
                         logSerialData(payload, 'rx');
                     }
@@ -612,7 +614,10 @@
                     }
                     
                     if (value) {
+                        // 1. Mostra local
                         appendToTerminal(value);
+
+                        // 2. Envia para outros (Fragmentado em 1KB)
                         const topicBase = `multry/${currentRoom}`;
                         sendSerialDataChunked(`${topicBase}/serial/data`, value);
                     }
@@ -676,22 +681,27 @@
             elTerminalInputHidden.focus();
         }
 
+        // --- CORREÇÃO DO BACKSPACE E INPUT ---
         elTerminalInputHidden.addEventListener('input', (e) => {
-            const text = e.target.value;
-            
+            // Ignora eventos de deleção de conteúdo que o navegador possa disparar após o keydown
+            if (e.inputType === "deleteContentBackward" || e.inputType === "deleteContentForward") {
+                e.target.value = ''; 
+                return;
+            }
+
+            const text = e.inputType === "insertText" ? e.data : e.target.value;
+
+            // Filtra caracteres de controle não imprimíveis (como \b)
+            // Espaço é 32. Qualquer código < 32 deve ser ignorado aqui.
+            if (text && text.length === 1 && text.charCodeAt(0) < 32) {
+                e.target.value = '';
+                return;
+            }
+
             if (text) {
-                // CORREÇÃO DO BACKSPACE (Input Glitch)
-                // Filtra caracteres de controle (< 32) vindos de input,
-                // pois eles são tratados no keydown.
-                // Isso evita enviar o "\x08" estranho do teclado móvel.
-                // Espaço é 32, letras acima.
-                const code = text.charCodeAt(0);
-                
-                if (code >= 32) {
-                    if (isConnectedToMQTT) {
-                        const topicBase = `multry/${currentRoom}`;
-                        publishMessage(`${topicBase}/serial/input`, text);
-                    }
+                if (isConnectedToMQTT) {
+                    const topicBase = `multry/${currentRoom}`;
+                    publishMessage(`${topicBase}/serial/input`, text);
                 }
                 e.target.value = '';
             }
@@ -699,18 +709,19 @@
 
         elTerminalInputHidden.addEventListener('keydown', (e) => {
             if (e.key === 'Backspace') {
+                // Impede que o navegador processe o backspace no campo invisível (que gera o evento input problemático)
+                e.preventDefault(); 
                 if (isConnectedToMQTT) {
                     const topicBase = `multry/${currentRoom}`;
-                    // Mantiem \x7F (Delete) que funcionou bem para o usuário local
                     publishMessage(`${topicBase}/serial/input`, '\x7F'); 
                 }
-                e.target.value = '';
+                elTerminalInputHidden.value = ''; 
             } else if (e.key === 'Enter') {
                 if (isConnectedToMQTT) {
                     const topicBase = `multry/${currentRoom}`;
                     publishMessage(`${topicBase}/serial/input`, '\r');
                 }
-                e.target.value = '';
+                elTerminalInputHidden.value = '';
             }
         });
 
