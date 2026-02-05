@@ -69,7 +69,7 @@
         .app-title {
             font-size: 1.5rem;
             font-weight: bold;
-            /* --- TÍTULO VERMELHO --- */
+            /* TÍTULO VERMELHO */
             color: #ff4444; 
             letter-spacing: 2px;
         }
@@ -303,11 +303,11 @@
         let isSerialConnected = false;
         let serialLockedBy = null;
 
-        // --- VARIÁVEIS PARA BUFFERING (ANTI-FLOODING) ---
-        let serialOutBuffer = ""; // Acumula dados para enviar
-        let lastMqttFlush = 0;    // Timestamp do último envio
-        const FLUSH_INTERVAL = 200; // Envia a cada 200ms
-        const MAX_PACKET_SIZE = 4096; // Tamanho máximo seguro por pacote
+        // --- VARIÁVEIS PARA BUFFER CONTROLADO (WATCHDOG) ---
+        let serialOutBuffer = ""; 
+        let flushTimer = null;      // Timer para envio após silêncio
+        const MAX_PACKET_SIZE = 4096;
+        const FLUSH_INTERVAL = 200; // Tempo de silêncio (ms) antes de enviar o resto
 
         const elUsername = document.getElementById('username');
         const elRoomname = document.getElementById('roomname');
@@ -358,7 +358,7 @@
                 useSSL: true,
                 keepAliveInterval: 30,
                 timeout: 10,
-                mqttVersion: 4
+                mqttVersion:4
             };
 
             mqttClient.connect(connectOptions);
@@ -424,18 +424,24 @@
             }
         }
 
-        // --- LÓGICA DE BUFFER CONTROLADO ---
-        function flushSerialBuffer() {
-            if (serialOutBuffer.length === 0) return;
-
-            const now = Date.now();
-            if (now - lastMqttFlush < FLUSH_INTERVAL && serialOutBuffer.length < MAX_PACKET_SIZE) {
+        // --- LOGICA DE ENVIO COM TIMER (CORREÇÃO FINAL) ---
+        function flushSerialBuffer(force = false) {
+            if (serialOutBuffer.length === 0) {
+                if (flushTimer) {
+                    clearTimeout(flushTimer);
+                    flushTimer = null;
+                }
                 return;
             }
 
             const topicBase = `multry/${currentRoom}`;
             const topic = `${topicBase}/serial/data`;
 
+            // Se não for forçado, NÃO envia (a lógica do timer controla o quando)
+            // O 'force' é usado pelo Timer ou quando o buffer estoura
+            if (!force) return;
+
+            // Divide e envia tudo que tem acumulado
             while (serialOutBuffer.length > 0) {
                 const chunk = serialOutBuffer.substring(0, MAX_PACKET_SIZE);
                 serialOutBuffer = serialOutBuffer.substring(MAX_PACKET_SIZE);
@@ -444,7 +450,11 @@
                 logSerialData(chunk, 'tx');
             }
 
-            lastMqttFlush = now;
+            // Limpa timer pois o buffer foi esvaziado
+            if (flushTimer) {
+                clearTimeout(flushTimer);
+                flushTimer = null;
+            }
         }
 
         function onMessageArrived(message) {
@@ -593,7 +603,8 @@
 
                 isSerialConnected = true;
                 serialOutBuffer = "";
-                lastMqttFlush = Date.now();
+                if (flushTimer) clearTimeout(flushTimer);
+                flushTimer = null;
 
                 elBtnConnectSerial.textContent = "Serial Conectada";
                 elBtnConnectSerial.disabled = true;
@@ -627,9 +638,28 @@
                     }
                     
                     if (value) {
+                        // 1. Mostra local imediato
                         appendToTerminal(value);
+
+                        // 2. Adiciona ao buffer
                         serialOutBuffer += value;
-                        flushSerialBuffer();
+
+                        // 3. Lógica de Envio Watchdog
+                        // Cancela timer anterior (ainda não chegou novo dado? espera mais)
+                        if (flushTimer) {
+                            clearTimeout(flushTimer);
+                        }
+
+                        // Se buffer muito cheio, envia agora
+                        if (serialOutBuffer.length >= MAX_PACKET_SIZE) {
+                            flushSerialBuffer(true);
+                        } else {
+                            // Se não, agenda envio para 200ms no futuro
+                            // Se chegar novo dado antes disso, reinicia. Se não, envia o que acumulou.
+                            flushTimer = setTimeout(() => {
+                                flushSerialBuffer(true);
+                            }, FLUSH_INTERVAL);
+                        }
                     }
                 }
             } catch (error) {
@@ -639,7 +669,8 @@
         }
 
         function unlockSerial() {
-            flushSerialBuffer();
+            // Envia o que sobrar no buffer
+            flushSerialBuffer(true);
 
             if (!isSerialConnected) return;
             if (serialWriter) serialWriter.close();
@@ -680,13 +711,11 @@
             }
         }
 
-        // --- CORREÇÃO: Scroll Síncrono ---
         function appendToTerminal(text) {
             const span = document.createElement('span');
             span.textContent = text;
             elTerminalOutput.appendChild(span);
-            
-            // Scroll imediato (sem requestAnimationFrame) para forçar a renderização
+            // Scroll imediato
             elTerminalOutput.scrollTop = elTerminalOutput.scrollHeight;
         }
 
@@ -762,7 +791,6 @@
             }
         }
 
-        // --- CORREÇÃO: Scroll Síncrono no Log ---
         function logSerialData(data, direction) {
             const div = document.createElement('div');
             const timestamp = new Date().toLocaleTimeString();
