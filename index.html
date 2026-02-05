@@ -69,7 +69,8 @@
         .app-title {
             font-size: 1.5rem;
             font-weight: bold;
-            color: var(--accent-color);
+            /* --- TÍTULO VERMELHO PARA VERIFICAÇÃO --- */
+            color: #ff4444; 
             letter-spacing: 2px;
         }
 
@@ -302,6 +303,12 @@
         let isSerialConnected = false;
         let serialLockedBy = null;
 
+        // --- VARIÁVEIS PARA BUFFERING (ANTI-FLOODING) ---
+        let serialOutBuffer = ""; // Acumula dados para enviar
+        let lastMqttFlush = 0;    // Timestamp do último envio
+        const FLUSH_INTERVAL = 200; // Envia a cada 200ms
+        const MAX_PACKET_SIZE = 4096; // Tamanho máximo seguro por pacote
+
         const elUsername = document.getElementById('username');
         const elRoomname = document.getElementById('roomname');
         const elMainInterface = document.getElementById('main-interface');
@@ -410,33 +417,38 @@
             try {
                 const message = new Paho.MQTT.Message(payload);
                 message.destinationName = topic;
-                
-                // --- CORREÇÃO CRÍTICA: QoS 1 ---
-                // Isso força o broker a confirmar o recebimento, prevenindo que pacotes 
-                // sejam descartados silenciosamente (como estava acontecendo com o final da mensagem).
-                // Isso também controla naturalmente a velocidade de envio, evitando "flooding".
                 message.qos = 1; 
-                
                 mqttClient.send(message);
             } catch (e) {
                 console.error("Erro ao enviar msg", e);
             }
         }
 
-        // Fragmenta dados grandes para envio via MQTT
-        function sendSerialDataChunked(topic, data) {
-            const CHUNK_SIZE = 1024; 
-            
-            if (data.length <= CHUNK_SIZE) {
-                publishMessage(topic, data);
-                logSerialData(data, 'tx');
-            } else {
-                for (let i = 0; i < data.length; i += CHUNK_SIZE) {
-                    const chunk = data.substring(i, i + CHUNK_SIZE);
-                    publishMessage(topic, chunk);
-                    logSerialData(chunk, 'tx');
-                }
+        // --- NOVA LÓGICA DE ENVIO: BUFFER CONTROLADO ---
+        // Isso evita o flooding e garante que pacotes não sejam descartados pelo broker.
+        function flushSerialBuffer() {
+            if (serialOutBuffer.length === 0) return;
+
+            const now = Date.now();
+            // Envia apenas se passou 200ms ou se o buffer está muito grande (para evitar lag excessivo)
+            if (now - lastMqttFlush < FLUSH_INTERVAL && serialOutBuffer.length < MAX_PACKET_SIZE) {
+                return;
             }
+
+            const topicBase = `multry/${currentRoom}`;
+            const topic = `${topicBase}/serial/data`;
+
+            // Divide o buffer atual em pedaços de tamanho seguro (MAX_PACKET_SIZE)
+            // Se o buffer tiver 12KB, envia 3 pacotes seguidos, mas depois para e espera 200ms
+            while (serialOutBuffer.length > 0) {
+                const chunk = serialOutBuffer.substring(0, MAX_PACKET_SIZE);
+                serialOutBuffer = serialOutBuffer.substring(MAX_PACKET_SIZE);
+                
+                publishMessage(topic, chunk);
+                logSerialData(chunk, 'tx');
+            }
+
+            lastMqttFlush = now;
         }
 
         function onMessageArrived(message) {
@@ -455,8 +467,11 @@
                 }
                 else if (topic === `${topicBase}/serial/data`) {
                     if (isSerialConnected) {
+                        // O usuário conectado vê localmente, o MQTT serve apenas de transporte
+                        // Mas o log é útil para debug de tráfego de rede
                         logSerialData(payload, 'rx');
                     } else {
+                        // Usuário remoto
                         appendToTerminal(payload);
                         logSerialData(payload, 'rx');
                     }
@@ -585,6 +600,10 @@
 
                 isSerialConnected = true;
                 
+                // Limpa buffer ao conectar
+                serialOutBuffer = "";
+                lastMqttFlush = Date.now();
+
                 elBtnConnectSerial.textContent = "Serial Conectada";
                 elBtnConnectSerial.disabled = true;
                 elTerminalOutput.textContent = ""; 
@@ -617,9 +636,12 @@
                     }
                     
                     if (value) {
+                        // 1. MOSTRA IMEDIATO NA TELA LOCAL (Latência Zero para mim)
                         appendToTerminal(value);
-                        const topicBase = `multry/${currentRoom}`;
-                        sendSerialDataChunked(`${topicBase}/serial/data`, value);
+
+                        // 2. ACUMULA NO BUFFER PARA ENVIO CONTROLADO (Remoto)
+                        serialOutBuffer += value;
+                        flushSerialBuffer();
                     }
                 }
             } catch (error) {
@@ -629,6 +651,9 @@
         }
 
         function unlockSerial() {
+            // Envia o que restar no buffer antes de desconectar
+            flushSerialBuffer();
+
             if (!isSerialConnected) return;
             if (serialWriter) serialWriter.close();
             if (serialReader) serialReader.cancel();
@@ -683,8 +708,6 @@
 
         // --- FILTRO DE INPUT RIGOROSO ---
         elTerminalInputHidden.addEventListener('input', (e) => {
-            // Apenas envia se o tipo do evento for exatamente "insertText"
-            // Isso ignora totalmente eventos de deletar, colar ou comandos de teclado estranhos.
             if (e.inputType !== "insertText") {
                 e.target.value = '';
                 return;
@@ -694,7 +717,6 @@
             
             if (text && text.length === 1) {
                 const code = text.charCodeAt(0);
-                // Ignora qualquer caractere não imprimível (< 32)
                 if (code >= 32) {
                     if (isConnectedToMQTT) {
                         const topicBase = `multry/${currentRoom}`;
