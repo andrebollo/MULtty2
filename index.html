@@ -172,7 +172,7 @@
         #terminal-output {
             flex: 1;
             overflow-y: auto;
-            white-space: pre-wrap;
+            white-space: pre-wrap; /* Mantém formatação */
             word-break: break-all;
             font-size: 1rem;
             line-height: 1.2;
@@ -447,10 +447,8 @@
                     handlePresence(data);
                 }
                 else if (topic === `${topicBase}/serial/data`) {
-                    appendToTerminal(payload, false);
-                    // Log de RX movido para dentro de sendSerialDataChunked no cliente que envia
-                    // ou podemos logar aqui também se quisermos ver o que recebemos do outro cliente
-                    // logSerialData(payload, 'rx'); 
+                    // Atualiza o terminal
+                    appendToTerminal(payload);
                 }
                 else if (topic === `${topicBase}/serial/input`) {
                     if (isSerialConnected && serialWriter) {
@@ -578,7 +576,10 @@
                 
                 elBtnConnectSerial.textContent = "Serial Conectada";
                 elBtnConnectSerial.disabled = true;
-                elTerminalOutput.textContent = "";
+                
+                // Limpa o terminal apenas ao conectar
+                elTerminalOutput.textContent = ""; 
+                
                 addSystemMessage("Conexão Serial local estabelecida.", 'system');
                 logSerialData("--- Serial Conectada ---", 'rx');
 
@@ -608,7 +609,6 @@
                     }
                     
                     if (value) {
-                        // Usa a função de chunking para evitar perda de dados
                         const topicBase = `multry/${currentRoom}`;
                         sendSerialDataChunked(`${topicBase}/serial/data`, value);
                     }
@@ -659,8 +659,15 @@
             }
         }
 
-        function appendToTerminal(text, localEcho) {
-            elTerminalOutput.textContent += text;
+        // --- CORREÇÃO VISUAL DO TERMINAL ---
+        function appendToTerminal(text) {
+            // Em vez de concatenar strings gigantes (o que trava o navegador),
+            // adicionamos nós de texto ao DOM.
+            const span = document.createElement('span');
+            span.textContent = text;
+            elTerminalOutput.appendChild(span);
+            
+            // Auto-scroll do Terminal
             elTerminalOutput.scrollTop = elTerminalOutput.scrollHeight;
         }
 
@@ -726,6 +733,7 @@
             }
         }
 
+        // --- LOGS SERIAL DATA (COM AUTO SCROLL GARANTIDO) ---
         function logSerialData(data, direction) {
             const div = document.createElement('div');
             const timestamp = new Date().toLocaleTimeString();
@@ -736,7 +744,11 @@
             div.className = (direction === 'tx') ? 'log-tx' : 'log-rx';
             div.textContent = `[${timestamp}] ${direction === 'tx' ? '>>' : '<<'} ${cleanData}`;
             elSerialLog.appendChild(div);
-            elSerialLog.scrollTop = elSerialLog.scrollHeight;
+            
+            // Força o auto-scroll para o final
+            setTimeout(() => {
+                elSerialLog.scrollTop = elSerialLog.scrollHeight;
+            }, 0);
         }
 
         function escapeHtml(text) {
