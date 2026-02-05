@@ -45,7 +45,7 @@
         .login-area { display: flex; gap: 10px; align-items: center; }
 
         input[type="text"] {
-            padding: 5px 10px;
+            padding:5px 10px;
             border-radius: 4px;
             border: 1px solid var(--border-color);
             background-color: #3c3c3c;
@@ -69,7 +69,7 @@
         .app-title {
             font-size: 1.5rem;
             font-weight: bold;
-            /* --- TÍTULO VERMELHO PARA VERIFICAÇÃO --- */
+            /* --- TÍTULO VERMELHO --- */
             color: #ff4444; 
             letter-spacing: 2px;
         }
@@ -424,13 +424,11 @@
             }
         }
 
-        // --- NOVA LÓGICA DE ENVIO: BUFFER CONTROLADO ---
-        // Isso evita o flooding e garante que pacotes não sejam descartados pelo broker.
+        // --- LÓGICA DE BUFFER CONTROLADO ---
         function flushSerialBuffer() {
             if (serialOutBuffer.length === 0) return;
 
             const now = Date.now();
-            // Envia apenas se passou 200ms ou se o buffer está muito grande (para evitar lag excessivo)
             if (now - lastMqttFlush < FLUSH_INTERVAL && serialOutBuffer.length < MAX_PACKET_SIZE) {
                 return;
             }
@@ -438,8 +436,6 @@
             const topicBase = `multry/${currentRoom}`;
             const topic = `${topicBase}/serial/data`;
 
-            // Divide o buffer atual em pedaços de tamanho seguro (MAX_PACKET_SIZE)
-            // Se o buffer tiver 12KB, envia 3 pacotes seguidos, mas depois para e espera 200ms
             while (serialOutBuffer.length > 0) {
                 const chunk = serialOutBuffer.substring(0, MAX_PACKET_SIZE);
                 serialOutBuffer = serialOutBuffer.substring(MAX_PACKET_SIZE);
@@ -467,11 +463,8 @@
                 }
                 else if (topic === `${topicBase}/serial/data`) {
                     if (isSerialConnected) {
-                        // O usuário conectado vê localmente, o MQTT serve apenas de transporte
-                        // Mas o log é útil para debug de tráfego de rede
                         logSerialData(payload, 'rx');
                     } else {
-                        // Usuário remoto
                         appendToTerminal(payload);
                         logSerialData(payload, 'rx');
                     }
@@ -599,8 +592,6 @@
                 serialReader = reader;
 
                 isSerialConnected = true;
-                
-                // Limpa buffer ao conectar
                 serialOutBuffer = "";
                 lastMqttFlush = Date.now();
 
@@ -636,10 +627,7 @@
                     }
                     
                     if (value) {
-                        // 1. MOSTRA IMEDIATO NA TELA LOCAL (Latência Zero para mim)
                         appendToTerminal(value);
-
-                        // 2. ACUMULA NO BUFFER PARA ENVIO CONTROLADO (Remoto)
                         serialOutBuffer += value;
                         flushSerialBuffer();
                     }
@@ -651,7 +639,6 @@
         }
 
         function unlockSerial() {
-            // Envia o que restar no buffer antes de desconectar
             flushSerialBuffer();
 
             if (!isSerialConnected) return;
@@ -693,20 +680,20 @@
             }
         }
 
+        // --- CORREÇÃO: Scroll Síncrono ---
         function appendToTerminal(text) {
             const span = document.createElement('span');
             span.textContent = text;
             elTerminalOutput.appendChild(span);
-            requestAnimationFrame(() => {
-                elTerminalOutput.scrollTop = elTerminalOutput.scrollHeight;
-            });
+            
+            // Scroll imediato (sem requestAnimationFrame) para forçar a renderização
+            elTerminalOutput.scrollTop = elTerminalOutput.scrollHeight;
         }
 
         function focusTerminalInput() {
             elTerminalInputHidden.focus();
         }
 
-        // --- FILTRO DE INPUT RIGOROSO ---
         elTerminalInputHidden.addEventListener('input', (e) => {
             if (e.inputType !== "insertText") {
                 e.target.value = '';
@@ -715,7 +702,7 @@
 
             const text = e.data || e.target.value;
             
-            if (text && text.length === 1) {
+            if (text && text.length ===1) {
                 const code = text.charCodeAt(0);
                 if (code >= 32) {
                     if (isConnectedToMQTT) {
@@ -775,6 +762,7 @@
             }
         }
 
+        // --- CORREÇÃO: Scroll Síncrono no Log ---
         function logSerialData(data, direction) {
             const div = document.createElement('div');
             const timestamp = new Date().toLocaleTimeString();
@@ -786,9 +774,8 @@
             div.textContent = `[${timestamp}] ${direction === 'tx' ? '>>' : '<<'} ${cleanData}`;
             elSerialLog.appendChild(div);
             
-            requestAnimationFrame(() => {
-                elSerialLog.scrollTop = elSerialLog.scrollHeight;
-            });
+            // Scroll imediato
+            elSerialLog.scrollTop = elSerialLog.scrollHeight;
         }
 
         function escapeHtml(text) {
