@@ -415,6 +415,23 @@
             }
         }
 
+        // --- Função para enviar grandes blocos de dados divididos em pedaços ---
+        function sendSerialDataChunked(topic, data) {
+            const CHUNK_SIZE = 2048; // Limite seguro de 2KB por pacote
+            
+            if (data.length <= CHUNK_SIZE) {
+                publishMessage(topic, data);
+                logSerialData(data, 'rx');
+            } else {
+                // Divide o dado em pedaços
+                for (let i = 0; i < data.length; i += CHUNK_SIZE) {
+                    const chunk = data.substring(i, i + CHUNK_SIZE);
+                    publishMessage(topic, chunk);
+                    logSerialData(chunk, 'rx');
+                }
+            }
+        }
+
         function onMessageArrived(message) {
             const topic = message.destinationName;
             const payload = message.payloadString;
@@ -431,7 +448,9 @@
                 }
                 else if (topic === `${topicBase}/serial/data`) {
                     appendToTerminal(payload, false);
-                    logSerialData(payload, 'rx');
+                    // Log de RX movido para dentro de sendSerialDataChunked no cliente que envia
+                    // ou podemos logar aqui também se quisermos ver o que recebemos do outro cliente
+                    // logSerialData(payload, 'rx'); 
                 }
                 else if (topic === `${topicBase}/serial/input`) {
                     if (isSerialConnected && serialWriter) {
@@ -547,12 +566,10 @@
                 await serialPort.open({ baudRate: 9600 });
 
                 const textEncoder = new TextEncoderStream();
-                // Tratamento de erro no pipe de escrita
                 textEncoder.readable.pipeTo(serialPort.writable).catch(err => console.error("Erro pipe Writable", err));
                 serialWriter = textEncoder.writable.getWriter();
 
                 const textDecoder = new TextDecoderStream();
-                // Tratamento de erro no pipe de leitura
                 serialPort.readable.pipeTo(textDecoder.writable).catch(err => console.error("Erro pipe Readable", err));
                 const reader = textDecoder.readable.getReader();
                 serialReader = reader;
@@ -591,14 +608,9 @@
                     }
                     
                     if (value) {
-                        // Envia para MQTT para todos verem
-                        if (isConnectedToMQTT) {
-                            const topicBase = `multry/${currentRoom}`;
-                            publishMessage(`${topicBase}/serial/data`, value);
-                        } else {
-                            // Fallback: Se MQTT cair, mostra localmente apenas (opcional, mas ajuda debug)
-                            console.log("Dados recebidos sem MQTT:", value);
-                        }
+                        // Usa a função de chunking para evitar perda de dados
+                        const topicBase = `multry/${currentRoom}`;
+                        sendSerialDataChunked(`${topicBase}/serial/data`, value);
                     }
                 }
             } catch (error) {
@@ -656,7 +668,6 @@
             elTerminalInputHidden.focus();
         }
 
-        // --- CORREÇÃO DO INPUT DO TERMINAL ---
         elTerminalInputHidden.addEventListener('input', (e) => {
             const text = e.target.value;
             if (text) {
@@ -664,25 +675,23 @@
                     const topicBase = `multry/${currentRoom}`;
                     publishMessage(`${topicBase}/serial/input`, text);
                 }
-                e.target.value = ''; // Limpa para digitar o próximo
+                e.target.value = '';
             }
         });
 
-        // CORREÇÃO ENTER KEY e BACKSPACE
         elTerminalInputHidden.addEventListener('keydown', (e) => {
             if (e.key === 'Backspace') {
                 if (isConnectedToMQTT) {
                     const topicBase = `multry/${currentRoom}`;
-                    publishMessage(`${topicBase}/serial/input`, '\x08'); // Backspace code
+                    publishMessage(`${topicBase}/serial/input`, '\x08'); 
                 }
                 e.target.value = '';
             } else if (e.key === 'Enter') {
-                // Envia Enter (Carriage Return)
                 if (isConnectedToMQTT) {
                     const topicBase = `multry/${currentRoom}`;
                     publishMessage(`${topicBase}/serial/input`, '\r');
                 }
-                e.target.value = ''; // Limpa campo
+                e.target.value = '';
             }
         });
 
