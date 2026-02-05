@@ -172,10 +172,12 @@
         #terminal-output {
             flex: 1;
             overflow-y: auto;
-            white-space: pre-wrap; /* Mantém formatação */
+            white-space: pre-wrap;
             word-break: break-all;
             font-size: 1rem;
             line-height: 1.2;
+            /* Garante que o container ocupe o espaço */
+            height: 100%; 
         }
         #terminal-input-hidden {
             position: absolute;
@@ -415,19 +417,16 @@
             }
         }
 
-        // --- Função para enviar grandes blocos de dados divididos em pedaços ---
+        // Fragmenta dados grandes para envio via MQTT (para outros usuários)
         function sendSerialDataChunked(topic, data) {
-            const CHUNK_SIZE = 2048; // Limite seguro de 2KB por pacote
+            const CHUNK_SIZE = 2048; 
             
             if (data.length <= CHUNK_SIZE) {
                 publishMessage(topic, data);
-                logSerialData(data, 'rx');
             } else {
-                // Divide o dado em pedaços
                 for (let i = 0; i < data.length; i += CHUNK_SIZE) {
                     const chunk = data.substring(i, i + CHUNK_SIZE);
                     publishMessage(topic, chunk);
-                    logSerialData(chunk, 'rx');
                 }
             }
         }
@@ -447,7 +446,7 @@
                     handlePresence(data);
                 }
                 else if (topic === `${topicBase}/serial/data`) {
-                    // Atualiza o terminal
+                    // Usuário REMOTO recebe o dado e mostra na tela
                     appendToTerminal(payload);
                 }
                 else if (topic === `${topicBase}/serial/input`) {
@@ -576,10 +575,7 @@
                 
                 elBtnConnectSerial.textContent = "Serial Conectada";
                 elBtnConnectSerial.disabled = true;
-                
-                // Limpa o terminal apenas ao conectar
                 elTerminalOutput.textContent = ""; 
-                
                 addSystemMessage("Conexão Serial local estabelecida.", 'system');
                 logSerialData("--- Serial Conectada ---", 'rx');
 
@@ -609,6 +605,10 @@
                     }
                     
                     if (value) {
+                        // 1. MOSTRA IMEDIATO PARA MIM (Usuario Conectado)
+                        appendToTerminal(value);
+
+                        // 2. ENVIA PARA OUTROS (Fragmentado via MQTT)
                         const topicBase = `multry/${currentRoom}`;
                         sendSerialDataChunked(`${topicBase}/serial/data`, value);
                     }
@@ -659,16 +659,16 @@
             }
         }
 
-        // --- CORREÇÃO VISUAL DO TERMINAL ---
+        // --- TERMINAL: Adiciona texto com Scroll Garantido ---
         function appendToTerminal(text) {
-            // Em vez de concatenar strings gigantes (o que trava o navegador),
-            // adicionamos nós de texto ao DOM.
             const span = document.createElement('span');
             span.textContent = text;
             elTerminalOutput.appendChild(span);
             
-            // Auto-scroll do Terminal
-            elTerminalOutput.scrollTop = elTerminalOutput.scrollHeight;
+            // Usa requestAnimationFrame para garantir que o scroll só role quando o DOM estiver atualizado
+            requestAnimationFrame(() => {
+                elTerminalOutput.scrollTop = elTerminalOutput.scrollHeight;
+            });
         }
 
         function focusTerminalInput() {
@@ -733,8 +733,11 @@
             }
         }
 
-        // --- LOGS SERIAL DATA (COM AUTO SCROLL GARANTIDO) ---
+        // --- LOGS COM SCROLL GARANTIDO ---
         function logSerialData(data, direction) {
+            // Só loga TX para não poluir muito o painel de debug com stream RX
+            if (direction === 'rx') return; 
+
             const div = document.createElement('div');
             const timestamp = new Date().toLocaleTimeString();
             let cleanData = data.replace(/[\x00-\x1F\x7F]/g, (m) => {
@@ -745,10 +748,10 @@
             div.textContent = `[${timestamp}] ${direction === 'tx' ? '>>' : '<<'} ${cleanData}`;
             elSerialLog.appendChild(div);
             
-            // Força o auto-scroll para o final
-            setTimeout(() => {
+            // Scroll automático
+            requestAnimationFrame(() => {
                 elSerialLog.scrollTop = elSerialLog.scrollHeight;
-            }, 0);
+            });
         }
 
         function escapeHtml(text) {
