@@ -422,7 +422,6 @@
             }
         }
 
-        // --- LÓGICA DE ENVIO COM TIMER ---
         function flushSerialBuffer(force = false) {
             if (serialOutBuffer.length === 0) {
                 if (flushTimer) {
@@ -467,9 +466,9 @@
                 }
                 else if (topic === `${topicBase}/serial/data`) {
                     if (isSerialConnected) {
+                        // Log visual apenas para debug de tráfego
                         logSerialData(payload, 'rx');
                     } else {
-                        // Processa o texto recebido para interpretar Backspace (BS) e Delete (DEL)
                         processIncomingText(payload);
                         logSerialData(payload, 'rx');
                     }
@@ -633,9 +632,7 @@
                     }
                     
                     if (value) {
-                        // Processa visualmente o texto local também (para quem está conectado ver backspace funcionar)
                         processIncomingText(value);
-                        
                         serialOutBuffer += value;
 
                         if (flushTimer) {
@@ -699,62 +696,73 @@
             }
         }
 
-        // --- CORREÇÃO DE BACKSPACE VISUAL ---
-        
-        // Função para apagar o último caractere do DOM
+        // --- CORREÇÃO: FILTRO DE EXIBIÇÃO ---
+        function processIncomingText(text) {
+            for (let i =0; i < text.length; i++) {
+                const char = text.charAt(i);
+                const code = text.charCodeAt(i);
+
+                // Apenas processa caracteres normais OU os que queremos controlar especificamente
+                // TAB(9), LF(10), CR(13), BS(8), DEL(127)
+                if (code === 9 || code === 10 || code === 13 || code === 8 || code === 127) {
+                    if (code === 8 || code === 127) {
+                        executeBackspaceOnDOM();
+                    } else {
+                        const span = document.createElement('span');
+                        span.textContent = char;
+                        elTerminalOutput.appendChild(span);
+                    }
+                } else if (code >= 32) {
+                    // Caracteres imprimíveis
+                    const span = document.createElement('span');
+                    span.textContent = char;
+                    elTerminalOutput.appendChild(span);
+                }
+                // Caso contrário (códigos de controle estranhos tipo \x1b), IGNORA.
+            }
+            elTerminalOutput.scrollTop = elTerminalOutput.scrollHeight;
+        }
+
         function executeBackspaceOnDOM() {
             const lastChild = elTerminalOutput.lastElementChild;
             if (lastChild && lastChild.tagName === 'SPAN') {
                 const txt = lastChild.textContent;
                 if (txt.length > 0) {
                     lastChild.textContent = txt.slice(0, -1);
-                    // Se o span ficar vazio, remove ele
                     if (lastChild.textContent.length === 0) {
                         elTerminalOutput.removeChild(lastChild);
                     }
                 } else {
-                    // Se o span já estava vazio, remove
                     elTerminalOutput.removeChild(lastChild);
                 }
             }
             elTerminalOutput.scrollTop = elTerminalOutput.scrollHeight;
         }
 
-        // Processa texto recebido caractere a caractere
-        function processIncomingText(text) {
-            for (let i = 0; i < text.length; i++) {
-                const char = text.charAt(i);
-                const code = text.charCodeAt(i);
-
-                // Se for Backspace (8) ou Delete (127)
-                if (code === 8 || code === 127) {
-                    executeBackspaceOnDOM();
-                } else {
-                    // Caractere normal
-                    const span = document.createElement('span');
-                    span.textContent = char;
-                    elTerminalOutput.appendChild(span);
-                }
-            }
-            elTerminalOutput.scrollTop = elTerminalOutput.scrollHeight;
-        }
-
-        // --- FIM CORREÇÃO BACKSPACE VISUAL ---
-
         function focusTerminalInput() {
             elTerminalInputHidden.focus();
         }
 
+        // --- CORREÇÃO: TRATAMENTO RIGOROSO DO INPUT (ENVIO) ---
         elTerminalInputHidden.addEventListener('input', (e) => {
-            if (e.inputType === "deleteContentBackward" || e.inputType === "deleteContentForward") {
+            // Ignora eventos de deleção (já tratados no keydown)
+            if (e.inputType === "deleteContentBackward" || e.inputType === "deleteContentForward" || e.inputType === "historyUndo" || e.inputType === "historyRedo") {
                 e.target.value = ''; 
                 return;
             }
 
-            const text = e.inputType === "insertText" ? e.data : e.target.value;
+            // Aceita APENAS insertText. 
+            // Isso evita que códigos residuais ou estados fantasma do input sejam enviados.
+            if (e.inputType !== "insertText") {
+                e.target.value = '';
+                return;
+            }
+
+            const text = e.data; // Usa APENAS e.data
 
             if (text && text.length === 1) {
                 const code = text.charCodeAt(0);
+                // Apenas envia se for imprimível (>= 32)
                 if (code >= 32) {
                     if (isConnectedToMQTT) {
                         const topicBase = `multry/${currentRoom}`;
@@ -770,10 +778,9 @@
 
             if (e.key === 'Backspace') {
                 e.preventDefault();
-                
-                // --- CORREÇÃO: APAGA VISUALMENTE AO PRESSIONAR ---
+                // Visual
                 executeBackspaceOnDOM();
-                
+                // Envio
                 if (isConnectedToMQTT) {
                     publishMessage(`${topicBase}/serial/input`, '\x08'); 
                 }
@@ -843,7 +850,7 @@
             const div = document.createElement('div');
             const timestamp = new Date().toLocaleTimeString();
             let cleanData = data.replace(/[\x00-\x1F\x7F]/g, (m) => {
-                const special = {'\t':'TAB','\n':'LF','\r':'CR', '\x7F':'DEL', '\x08':'BS'};
+                const special = {'\t':'TAB','\n':'LF','\r':'CR', '\x7F':'DEL', '\x08':'BS', '\x1b':'ESC'};
                 return special[m] ? `{${special[m]}}` : `{\\x${m.charCodeAt(0).toString(16)}}`;
             });
             div.className = (direction === 'tx') ? 'log-tx' : 'log-rx';
