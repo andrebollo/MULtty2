@@ -45,7 +45,7 @@
         .login-area { display: flex; gap: 10px; align-items: center; }
 
         input[type="text"] {
-            padding:5px 10px;
+            padding: 5px 10px;
             border-radius: 4px;
             border: 1px solid var(--border-color);
             background-color: #3c3c3c;
@@ -255,6 +255,7 @@
                 <div id="terminal-output">Aguardando conexão serial...</div>
                 
                 <div class="terminal-controls">
+                    <button class="btn-special" onclick="pasteToSerial()">Colar</button>
                     <button class="btn-special" onclick="sendSpecialChar('\t')">TAB</button>
                     <button class="btn-special" onclick="sendSpecialChar('\x1b[A')">↑</button>
                     <button class="btn-special" onclick="sendSpecialChar('\x1b[B')">↓</button>
@@ -466,7 +467,6 @@
                 }
                 else if (topic === `${topicBase}/serial/data`) {
                     if (isSerialConnected) {
-                        // Log visual apenas para debug de tráfego
                         logSerialData(payload, 'rx');
                     } else {
                         processIncomingText(payload);
@@ -696,7 +696,33 @@
             }
         }
 
-        // --- CORREÇÃO: FILTRO DE EXIBIÇÃO ---
+        // --- FUNÇÃO COLAR (PASTE) ---
+        function pasteToSerial() {
+            const text = prompt("Cole o texto/código para enviar para a serial:");
+            if (text && text.trim() !== "") {
+                if (isConnectedToMQTT) {
+                    const topicBase = `multry/${currentRoom}`;
+                    const topic = `${topicBase}/serial/input`;
+                    const CHUNK_SIZE = 1024; // Tamanho seguro
+                    
+                    // Divide e envia o texto
+                    for (let i = 0; i < text.length; i += CHUNK_SIZE) {
+                        const chunk = text.substring(i, i + CHUNK_SIZE);
+                        publishMessage(topic, chunk);
+                        logSerialData(chunk, 'tx');
+                    }
+                    
+                    // Mostra visualmente localmente para o usuário ver o que enviou
+                    // (Opcional, mas dá feedback visual imediato)
+                    if (!isSerialConnected) {
+                         // Se sou remoto, mostro o que colei na tela
+                         processIncomingText(text);
+                    }
+                }
+            }
+            focusTerminalInput();
+        }
+
         function processIncomingText(text) {
             for (let i =0; i < text.length; i++) {
                 const char = text.charAt(i);
@@ -729,10 +755,12 @@
                 const txt = lastChild.textContent;
                 if (txt.length > 0) {
                     lastChild.textContent = txt.slice(0, -1);
+                    // Se o span ficar vazio, remove ele
                     if (lastChild.textContent.length === 0) {
                         elTerminalOutput.removeChild(lastChild);
                     }
                 } else {
+                    // Se o span já estava vazio, remove
                     elTerminalOutput.removeChild(lastChild);
                 }
             }
@@ -743,7 +771,6 @@
             elTerminalInputHidden.focus();
         }
 
-        // --- CORREÇÃO: TRATAMENTO RIGOROSO DO INPUT (ENVIO) ---
         elTerminalInputHidden.addEventListener('input', (e) => {
             // Ignora eventos de deleção (já tratados no keydown)
             if (e.inputType === "deleteContentBackward" || e.inputType === "deleteContentForward" || e.inputType === "historyUndo" || e.inputType === "historyRedo") {
@@ -751,8 +778,7 @@
                 return;
             }
 
-            // Aceita APENAS insertText. 
-            // Isso evita que códigos residuais ou estados fantasma do input sejam enviados.
+            // Aceita APENAS insertText. Isso evita que códigos residuais sejam enviados.
             if (e.inputType !== "insertText") {
                 e.target.value = '';
                 return;
@@ -778,9 +804,10 @@
 
             if (e.key === 'Backspace') {
                 e.preventDefault();
-                // Visual
+                
+                // Apaga visualmente
                 executeBackspaceOnDOM();
-                // Envio
+                
                 if (isConnectedToMQTT) {
                     publishMessage(`${topicBase}/serial/input`, '\x08'); 
                 }
