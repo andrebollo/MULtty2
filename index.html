@@ -69,8 +69,7 @@
         .app-title {
             font-size: 1.5rem;
             font-weight: bold;
-            /* TÍTULO VERMELHO */
-            color: #ff4444; 
+            color: #ff4444; /* TÍTULO VERMELHO */
             letter-spacing: 2px;
         }
 
@@ -303,7 +302,6 @@
         let isSerialConnected = false;
         let serialLockedBy = null;
 
-        // --- VARIÁVEIS PARA BUFFER CONTROLADO (WATCHDOG) ---
         let serialOutBuffer = ""; 
         let flushTimer = null;
         const MAX_PACKET_SIZE = 4096;
@@ -424,7 +422,7 @@
             }
         }
 
-        // --- LOGICA DE ENVIO COM TIMER (WATCHDOG) ---
+        // --- LÓGICA DE ENVIO COM TIMER ---
         function flushSerialBuffer(force = false) {
             if (serialOutBuffer.length === 0) {
                 if (flushTimer) {
@@ -437,7 +435,6 @@
             const topicBase = `multry/${currentRoom}`;
             const topic = `${topicBase}/serial/data`;
 
-            // Envia apenas se forçado pelo timer ou se o buffer estiver cheio
             if (!force) return;
 
             while (serialOutBuffer.length > 0) {
@@ -472,7 +469,8 @@
                     if (isSerialConnected) {
                         logSerialData(payload, 'rx');
                     } else {
-                        appendToTerminal(payload);
+                        // Processa o texto recebido para interpretar Backspace (BS) e Delete (DEL)
+                        processIncomingText(payload);
                         logSerialData(payload, 'rx');
                     }
                 }
@@ -635,7 +633,9 @@
                     }
                     
                     if (value) {
-                        appendToTerminal(value);
+                        // Processa visualmente o texto local também (para quem está conectado ver backspace funcionar)
+                        processIncomingText(value);
+                        
                         serialOutBuffer += value;
 
                         if (flushTimer) {
@@ -699,21 +699,54 @@
             }
         }
 
-        function appendToTerminal(text) {
-            const span = document.createElement('span');
-            span.textContent = text;
-            elTerminalOutput.appendChild(span);
+        // --- CORREÇÃO DE BACKSPACE VISUAL ---
+        
+        // Função para apagar o último caractere do DOM
+        function executeBackspaceOnDOM() {
+            const lastChild = elTerminalOutput.lastElementChild;
+            if (lastChild && lastChild.tagName === 'SPAN') {
+                const txt = lastChild.textContent;
+                if (txt.length > 0) {
+                    lastChild.textContent = txt.slice(0, -1);
+                    // Se o span ficar vazio, remove ele
+                    if (lastChild.textContent.length === 0) {
+                        elTerminalOutput.removeChild(lastChild);
+                    }
+                } else {
+                    // Se o span já estava vazio, remove
+                    elTerminalOutput.removeChild(lastChild);
+                }
+            }
             elTerminalOutput.scrollTop = elTerminalOutput.scrollHeight;
         }
+
+        // Processa texto recebido caractere a caractere
+        function processIncomingText(text) {
+            for (let i = 0; i < text.length; i++) {
+                const char = text.charAt(i);
+                const code = text.charCodeAt(i);
+
+                // Se for Backspace (8) ou Delete (127)
+                if (code === 8 || code === 127) {
+                    executeBackspaceOnDOM();
+                } else {
+                    // Caractere normal
+                    const span = document.createElement('span');
+                    span.textContent = char;
+                    elTerminalOutput.appendChild(span);
+                }
+            }
+            elTerminalOutput.scrollTop = elTerminalOutput.scrollHeight;
+        }
+
+        // --- FIM CORREÇÃO BACKSPACE VISUAL ---
 
         function focusTerminalInput() {
             elTerminalInputHidden.focus();
         }
 
-        // --- CORREÇÃO DE TECLAS: BACKSPACE, TAB e SETAS ---
         elTerminalInputHidden.addEventListener('input', (e) => {
-            // Ignora eventos de deleção e controle que o navegador gera para evitar duplicados/glitches
-            if (e.inputType === "deleteContentBackward" || e.inputType === "deleteContentForward" || e.inputType === "historyUndo" || e.inputType === "historyRedo") {
+            if (e.inputType === "deleteContentBackward" || e.inputType === "deleteContentForward") {
                 e.target.value = ''; 
                 return;
             }
@@ -722,7 +755,6 @@
 
             if (text && text.length === 1) {
                 const code = text.charCodeAt(0);
-                // Apenas envia se for imprimível (>= 32)
                 if (code >= 32) {
                     if (isConnectedToMQTT) {
                         const topicBase = `multry/${currentRoom}`;
@@ -737,14 +769,17 @@
             const topicBase = `multry/${currentRoom}`;
 
             if (e.key === 'Backspace') {
-                e.preventDefault(); // Impede ação do navegador
+                e.preventDefault();
+                
+                // --- CORREÇÃO: APAGA VISUALMENTE AO PRESSIONAR ---
+                executeBackspaceOnDOM();
+                
                 if (isConnectedToMQTT) {
-                    // --- VOLTA PARA \x08 (BACKSPACE PADRÃO) ---
                     publishMessage(`${topicBase}/serial/input`, '\x08'); 
                 }
                 e.target.value = ''; 
             } else if (e.key === 'Tab') {
-                e.preventDefault(); // Impede mudança de foco
+                e.preventDefault();
                 if (isConnectedToMQTT) {
                     publishMessage(`${topicBase}/serial/input`, '\t');
                 }
@@ -754,9 +789,7 @@
                     publishMessage(`${topicBase}/serial/input`, '\r');
                 }
                 e.target.value = '';
-            }
-            // --- SUPORTE A SETAS (COMO PUTTY) ---
-            else if (e.key === 'ArrowUp') {
+            } else if (e.key === 'ArrowUp') {
                 e.preventDefault();
                 if (isConnectedToMQTT) publishMessage(`${topicBase}/serial/input`, '\x1b[A');
                 e.target.value = '';
