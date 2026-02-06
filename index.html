@@ -31,30 +31,82 @@
             overflow: hidden;
         }
 
+        /* --- CABEÇALHO (Sempre visível) --- */
         header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 10px 20px;
+            padding: 0 20px;
             background-color: #252526;
             border-bottom: 1px solid var(--border-color);
             height: 60px;
             flex-shrink: 0;
         }
 
-        .login-area { display: flex; gap: 10px; align-items: center; }
+        /* --- SOBREPOSIÇÃO DE LOGIN (Centralizado) --- */
+        #login-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-color);
+            z-index: 999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+
+        .login-box {
+            background-color: #2d2d2d;
+            padding: 30px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            max-width: 600px;
+            width: 90%;
+            text-align: center;
+        }
+
+        .login-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--accent-color);
+            margin-bottom: 20px;
+        }
+
+        .login-fields {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .instructions-box {
+            background-color: #1a1a1a;
+            padding: 15px;
+            border-radius: 4px;
+            text-align: left;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            color: #bbb;
+            border-left: 4px solid var(--accent-color);
+        }
 
         input[type="text"] {
-            padding: 5px 10px;
+            padding: 8px 10px;
             border-radius: 4px;
             border: 1px solid var(--border-color);
             background-color: #3c3c3c;
             color: white;
             outline: none;
+            flex: 1;
         }
 
         button {
-            padding: 6px 12px;
+            padding: 8px 16px;
             border: none;
             border-radius: 4px;
             background-color: var(--accent-color);
@@ -69,10 +121,11 @@
         .app-title {
             font-size: 1.5rem;
             font-weight: bold;
-            color: #ff4444; /* TÍTULO VERMELHO */
+            color: #ff4444; 
             letter-spacing: 2px;
         }
 
+        /* --- INTERFACE PRINCIPAL --- */
         .main-container {
             display: flex;
             flex: 1;
@@ -209,29 +262,100 @@
         .log-tx { color: #ff6b6b; }
         .log-rx { color: #4ecdc4; }
 
+        /* MODAL COLAR */
+        #paste-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            background-color: #252526;
+            padding: 20px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 600px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        .modal-content h3 {
+            margin-top: 0;
+            color: white;
+            border-bottom: 1px solid #444;
+            padding-bottom: 10px;
+        }
+        #paste-text-area {
+            width: 100%;
+            height: 250px;
+            background-color: #000;
+            color: var(--terminal-text);
+            border: 1px solid #555;
+            font-family: 'Courier New', Courier, monospace;
+            padding: 10px;
+            resize: vertical;
+            font-size: 1rem;
+        }
+        .modal-actions {
+            margin-top: 15px;
+            text-align: right;
+        }
+
         @media (max-width: 768px) {
             .main-container { flex-direction: column; overflow-y: auto; }
             .left-column, .right-column { width: 100%; border-right: none; height: 50vh; }
-            header { flex-direction: column; height: auto; gap: 10px; padding-bottom: 15px; }
-            .login-area { width: 100%; }
-            .login-area input { flex: 1; }
+            header { flex-direction: column; height: auto; padding: 5px 10px; }
+            .app-title { font-size: 1.2rem; }
         }
     </style>
 </head>
 <body>
 
+    <!-- CABEÇALHO VISÍVEL -->
     <header>
-        <div class="login-area" id="login-area">
-            <input type="text" id="username" placeholder="Seu Nome" maxlength="15">
-            <input type="text" id="roomname" placeholder="Sala (ex: sala1)" value="sala1">
-            <button onclick="enterRoom()">Entrar</button>
-        </div>
         <div class="app-title">MULtty</div>
         <div>
             <button id="btn-connect-serial" onclick="connectSerial()">Conectar Serial</button>
         </div>
     </header>
 
+    <!-- QUADRO DE LOGIN (Centralizado) -->
+    <div id="login-overlay">
+        <div class="login-box">
+            <div class="login-title">MULtty</div>
+            
+            <!-- INSTRUÇÕES -->
+            <div class="instructions-box">
+                "Essa página é um terminal serial colaborativo. coloque um nome, entre em uma sala (se não existir ela será criada). Ao entrar o terminal vai aparecer, assim como um chat. Um dos usuários conecta seu navegador a serial através do botão Conectar Serial. Todos na sala poderão interagir com a interface serial. Temos então um terminal serial estilo Putty de uma maneira colaborativa, que pode ser usado para remotamente configurar equipamentos ou monitorar processos."
+            </div>
+
+            <!-- CAMPOS DE ENTRADA -->
+            <div class="login-fields">
+                <input type="text" id="username" placeholder="Seu Nome" maxlength="15">
+                <input type="text" id="roomname" placeholder="Sala (ex: sala1)" value="sala1">
+                <button onclick="enterRoom()">Entrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE COLAR SCRIPT -->
+    <div id="paste-modal" onclick="if(event.target.id === 'paste-modal') closePasteModal()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <h3>Colar Script / Texto</h3>
+            <textarea id="paste-text-area" placeholder="Cole o script ou texto longo aqui..."></textarea>
+            <div class="modal-actions">
+                <button class="secondary" onclick="closePasteModal()">Cancelar</button>
+                <button onclick="sendPasteText()">Enviar para Serial</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- INTERFACE PRINCIPAL (Oculta inicialmente) -->
     <div class="main-container" id="main-interface" style="display:none;">
         
         <div class="left-column">
@@ -310,6 +434,7 @@
 
         const elUsername = document.getElementById('username');
         const elRoomname = document.getElementById('roomname');
+        const elLoginOverlay = document.getElementById('login-overlay');
         const elMainInterface = document.getElementById('main-interface');
         const elBtnConnectSerial = document.getElementById('btn-connect-serial');
         const elChatMessages = document.getElementById('chat-messages');
@@ -319,6 +444,8 @@
         const elTerminalInputHidden = document.getElementById('terminal-input-hidden');
         const elUsersList = document.getElementById('users-list');
         const elSerialLog = document.getElementById('serial-log');
+        const elPasteModal = document.getElementById('paste-modal');
+        const elPasteTextArea = document.getElementById('paste-text-area');
 
         let users = {};
 
@@ -334,7 +461,8 @@
             currentUser = name;
             currentRoom = room;
 
-            document.getElementById('login-area').style.display = 'none';
+            // Esconde o quadro de login e mostra a interface
+            elLoginOverlay.style.display = 'none';
             elMainInterface.style.display = 'flex';
             
             elChatInput.disabled = false;
@@ -696,40 +824,12 @@
             }
         }
 
-        // --- FUNÇÃO COLAR (PASTE) ---
-        function pasteToSerial() {
-            const text = prompt("Cole o texto/código para enviar para a serial:");
-            if (text && text.trim() !== "") {
-                if (isConnectedToMQTT) {
-                    const topicBase = `multry/${currentRoom}`;
-                    const topic = `${topicBase}/serial/input`;
-                    const CHUNK_SIZE = 1024; // Tamanho seguro
-                    
-                    // Divide e envia o texto
-                    for (let i = 0; i < text.length; i += CHUNK_SIZE) {
-                        const chunk = text.substring(i, i + CHUNK_SIZE);
-                        publishMessage(topic, chunk);
-                        logSerialData(chunk, 'tx');
-                    }
-                    
-                    // Mostra visualmente localmente para o usuário ver o que enviou
-                    // (Opcional, mas dá feedback visual imediato)
-                    if (!isSerialConnected) {
-                         // Se sou remoto, mostro o que colei na tela
-                         processIncomingText(text);
-                    }
-                }
-            }
-            focusTerminalInput();
-        }
-
+        // --- LÓGICA DE EXIBIÇÃO ---
         function processIncomingText(text) {
             for (let i =0; i < text.length; i++) {
                 const char = text.charAt(i);
                 const code = text.charCodeAt(i);
 
-                // Apenas processa caracteres normais OU os que queremos controlar especificamente
-                // TAB(9), LF(10), CR(13), BS(8), DEL(127)
                 if (code === 9 || code === 10 || code === 13 || code === 8 || code === 127) {
                     if (code === 8 || code === 127) {
                         executeBackspaceOnDOM();
@@ -739,12 +839,10 @@
                         elTerminalOutput.appendChild(span);
                     }
                 } else if (code >= 32) {
-                    // Caracteres imprimíveis
                     const span = document.createElement('span');
                     span.textContent = char;
                     elTerminalOutput.appendChild(span);
                 }
-                // Caso contrário (códigos de controle estranhos tipo \x1b), IGNORA.
             }
             elTerminalOutput.scrollTop = elTerminalOutput.scrollHeight;
         }
@@ -755,12 +853,10 @@
                 const txt = lastChild.textContent;
                 if (txt.length > 0) {
                     lastChild.textContent = txt.slice(0, -1);
-                    // Se o span ficar vazio, remove ele
                     if (lastChild.textContent.length === 0) {
                         elTerminalOutput.removeChild(lastChild);
                     }
                 } else {
-                    // Se o span já estava vazio, remove
                     elTerminalOutput.removeChild(lastChild);
                 }
             }
@@ -772,23 +868,20 @@
         }
 
         elTerminalInputHidden.addEventListener('input', (e) => {
-            // Ignora eventos de deleção (já tratados no keydown)
             if (e.inputType === "deleteContentBackward" || e.inputType === "deleteContentForward" || e.inputType === "historyUndo" || e.inputType === "historyRedo") {
                 e.target.value = ''; 
                 return;
             }
 
-            // Aceita APENAS insertText. Isso evita que códigos residuais sejam enviados.
             if (e.inputType !== "insertText") {
                 e.target.value = '';
                 return;
             }
 
-            const text = e.data; // Usa APENAS e.data
+            const text = e.data; 
 
             if (text && text.length === 1) {
                 const code = text.charCodeAt(0);
-                // Apenas envia se for imprimível (>= 32)
                 if (code >= 32) {
                     if (isConnectedToMQTT) {
                         const topicBase = `multry/${currentRoom}`;
@@ -805,7 +898,6 @@
             if (e.key === 'Backspace') {
                 e.preventDefault();
                 
-                // Apaga visualmente
                 executeBackspaceOnDOM();
                 
                 if (isConnectedToMQTT) {
@@ -890,6 +982,40 @@
             return text.replace(/[&<>"']/g, function(m) { 
                 return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"\'":'&#039;'}[m]; 
             });
+        }
+
+        // --- FUNÇÃO COLAR (MODAL) ---
+        function pasteToSerial() {
+            elPasteModal.style.display = 'flex';
+            elPasteTextArea.value = '';
+            elPasteTextArea.focus();
+        }
+
+        function closePasteModal() {
+            elPasteModal.style.display = 'none';
+            focusTerminalInput();
+        }
+
+        function sendPasteText() {
+            const text = elPasteTextArea.value;
+            if (text && text.trim() !== "") {
+                if (isConnectedToMQTT) {
+                    const topicBase = `multry/${currentRoom}`;
+                    const topic = `${topicBase}/serial/input`;
+                    const CHUNK_SIZE = 1024; 
+                    
+                    for (let i = 0; i < text.length; i += CHUNK_SIZE) {
+                        const chunk = text.substring(i, i + CHUNK_SIZE);
+                        publishMessage(topic, chunk);
+                        logSerialData(chunk, 'tx');
+                    }
+                    
+                    if (!isSerialConnected) {
+                         processIncomingText(text);
+                    }
+                }
+            }
+            closePasteModal();
         }
 
         window.addEventListener('beforeunload', () => {
