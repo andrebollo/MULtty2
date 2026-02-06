@@ -305,9 +305,9 @@
 
         // --- VARIÁVEIS PARA BUFFER CONTROLADO (WATCHDOG) ---
         let serialOutBuffer = ""; 
-        let flushTimer = null;      // Timer para envio após silêncio
+        let flushTimer = null;
         const MAX_PACKET_SIZE = 4096;
-        const FLUSH_INTERVAL = 200; // Tempo de silêncio (ms) antes de enviar o resto
+        const FLUSH_INTERVAL = 200; 
 
         const elUsername = document.getElementById('username');
         const elRoomname = document.getElementById('roomname');
@@ -358,7 +358,7 @@
                 useSSL: true,
                 keepAliveInterval: 30,
                 timeout: 10,
-                mqttVersion:4
+                mqttVersion: 4
             };
 
             mqttClient.connect(connectOptions);
@@ -424,7 +424,7 @@
             }
         }
 
-        // --- LOGICA DE ENVIO COM TIMER (CORREÇÃO FINAL) ---
+        // --- LOGICA DE ENVIO COM TIMER (WATCHDOG) ---
         function flushSerialBuffer(force = false) {
             if (serialOutBuffer.length === 0) {
                 if (flushTimer) {
@@ -437,11 +437,9 @@
             const topicBase = `multry/${currentRoom}`;
             const topic = `${topicBase}/serial/data`;
 
-            // Se não for forçado, NÃO envia (a lógica do timer controla o quando)
-            // O 'force' é usado pelo Timer ou quando o buffer estoura
+            // Envia apenas se forçado pelo timer ou se o buffer estiver cheio
             if (!force) return;
 
-            // Divide e envia tudo que tem acumulado
             while (serialOutBuffer.length > 0) {
                 const chunk = serialOutBuffer.substring(0, MAX_PACKET_SIZE);
                 serialOutBuffer = serialOutBuffer.substring(MAX_PACKET_SIZE);
@@ -450,7 +448,6 @@
                 logSerialData(chunk, 'tx');
             }
 
-            // Limpa timer pois o buffer foi esvaziado
             if (flushTimer) {
                 clearTimeout(flushTimer);
                 flushTimer = null;
@@ -638,24 +635,16 @@
                     }
                     
                     if (value) {
-                        // 1. Mostra local imediato
                         appendToTerminal(value);
-
-                        // 2. Adiciona ao buffer
                         serialOutBuffer += value;
 
-                        // 3. Lógica de Envio Watchdog
-                        // Cancela timer anterior (ainda não chegou novo dado? espera mais)
                         if (flushTimer) {
                             clearTimeout(flushTimer);
                         }
 
-                        // Se buffer muito cheio, envia agora
                         if (serialOutBuffer.length >= MAX_PACKET_SIZE) {
                             flushSerialBuffer(true);
                         } else {
-                            // Se não, agenda envio para 200ms no futuro
-                            // Se chegar novo dado antes disso, reinicia. Se não, envia o que acumulou.
                             flushTimer = setTimeout(() => {
                                 flushSerialBuffer(true);
                             }, FLUSH_INTERVAL);
@@ -669,7 +658,6 @@
         }
 
         function unlockSerial() {
-            // Envia o que sobrar no buffer
             flushSerialBuffer(true);
 
             if (!isSerialConnected) return;
@@ -715,7 +703,6 @@
             const span = document.createElement('span');
             span.textContent = text;
             elTerminalOutput.appendChild(span);
-            // Scroll imediato
             elTerminalOutput.scrollTop = elTerminalOutput.scrollHeight;
         }
 
@@ -723,16 +710,19 @@
             elTerminalInputHidden.focus();
         }
 
+        // --- CORREÇÃO DE TECLAS: BACKSPACE, TAB e SETAS ---
         elTerminalInputHidden.addEventListener('input', (e) => {
-            if (e.inputType !== "insertText") {
-                e.target.value = '';
+            // Ignora eventos de deleção e controle que o navegador gera para evitar duplicados/glitches
+            if (e.inputType === "deleteContentBackward" || e.inputType === "deleteContentForward" || e.inputType === "historyUndo" || e.inputType === "historyRedo") {
+                e.target.value = ''; 
                 return;
             }
 
-            const text = e.data || e.target.value;
-            
-            if (text && text.length ===1) {
+            const text = e.inputType === "insertText" ? e.data : e.target.value;
+
+            if (text && text.length === 1) {
                 const code = text.charCodeAt(0);
+                // Apenas envia se for imprimível (>= 32)
                 if (code >= 32) {
                     if (isConnectedToMQTT) {
                         const topicBase = `multry/${currentRoom}`;
@@ -744,19 +734,44 @@
         });
 
         elTerminalInputHidden.addEventListener('keydown', (e) => {
+            const topicBase = `multry/${currentRoom}`;
+
             if (e.key === 'Backspace') {
-                e.preventDefault(); 
+                e.preventDefault(); // Impede ação do navegador
                 if (isConnectedToMQTT) {
-                    const topicBase = `multry/${currentRoom}`;
-                    publishMessage(`${topicBase}/serial/input`, '\x7F'); 
+                    // --- VOLTA PARA \x08 (BACKSPACE PADRÃO) ---
+                    publishMessage(`${topicBase}/serial/input`, '\x08'); 
                 }
-                elTerminalInputHidden.value = ''; 
+                e.target.value = ''; 
+            } else if (e.key === 'Tab') {
+                e.preventDefault(); // Impede mudança de foco
+                if (isConnectedToMQTT) {
+                    publishMessage(`${topicBase}/serial/input`, '\t');
+                }
+                e.target.value = '';
             } else if (e.key === 'Enter') {
                 if (isConnectedToMQTT) {
-                    const topicBase = `multry/${currentRoom}`;
                     publishMessage(`${topicBase}/serial/input`, '\r');
                 }
-                elTerminalInputHidden.value = '';
+                e.target.value = '';
+            }
+            // --- SUPORTE A SETAS (COMO PUTTY) ---
+            else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (isConnectedToMQTT) publishMessage(`${topicBase}/serial/input`, '\x1b[A');
+                e.target.value = '';
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (isConnectedToMQTT) publishMessage(`${topicBase}/serial/input`, '\x1b[B');
+                e.target.value = '';
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                if (isConnectedToMQTT) publishMessage(`${topicBase}/serial/input`, '\x1b[C');
+                e.target.value = '';
+            } else if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                if (isConnectedToMQTT) publishMessage(`${topicBase}/serial/input`, '\x1b[D');
+                e.target.value = '';
             }
         });
 
@@ -795,14 +810,12 @@
             const div = document.createElement('div');
             const timestamp = new Date().toLocaleTimeString();
             let cleanData = data.replace(/[\x00-\x1F\x7F]/g, (m) => {
-                const special = {'\t':'TAB','\n':'LF','\r':'CR', '\x7F':'DEL'};
+                const special = {'\t':'TAB','\n':'LF','\r':'CR', '\x7F':'DEL', '\x08':'BS'};
                 return special[m] ? `{${special[m]}}` : `{\\x${m.charCodeAt(0).toString(16)}}`;
             });
             div.className = (direction === 'tx') ? 'log-tx' : 'log-rx';
             div.textContent = `[${timestamp}] ${direction === 'tx' ? '>>' : '<<'} ${cleanData}`;
             elSerialLog.appendChild(div);
-            
-            // Scroll imediato
             elSerialLog.scrollTop = elSerialLog.scrollHeight;
         }
 
